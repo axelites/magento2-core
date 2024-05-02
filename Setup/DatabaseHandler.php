@@ -151,8 +151,8 @@ class DatabaseHandler
     {
         $tableInstance = $this->installer->getTable($tableName);
         if ($this->installer->getConnection()->isTableExists($tableInstance) &&
-            $this->installer->getConnection()->tableColumnExists($tableName, $columnName)) {
-            $this->installer->getConnection()->dropColumn($tableName, $columnName);
+            $this->installer->getConnection()->tableColumnExists($tableInstance, $columnName)) {
+            $this->installer->getConnection()->dropColumn($tableInstance, $columnName);
         }
     }
 }
