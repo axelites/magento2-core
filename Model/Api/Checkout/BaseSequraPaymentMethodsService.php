@@ -12,11 +12,6 @@ use Sequra\Core\Model\Api\Builders\CreateOrderRequestBuilderFactory;
 use Sequra\Core\Model\Api\CartProvider\CartProvider;
 use Sequra\Core\Services\BusinessLogic\Utility\SeQuraTranslationProvider;
 
-/**
- * Class BaseSequraPaymentMethodsService
- *
- * @package Sequra\Core\Model\Api\Checkout
- */
 class BaseSequraPaymentMethodsService
 {
     /**
@@ -63,6 +58,13 @@ class BaseSequraPaymentMethodsService
         $this->translationProvider = $translationProvider;
     }
 
+    /**
+     * Returns available payment methods for the given cart
+     *
+     * @param string $cartId Cart ID to get payment methods for
+     *
+     * @return array<array<string, string>> Available payment methods
+     */
     public function getAvailablePaymentMethods(string $cartId): array
     {
         $quote = $this->cartProvider->getQuote($cartId);
@@ -77,11 +79,13 @@ class BaseSequraPaymentMethodsService
             'storeId' => (string)$quote->getStore()->getId(),
         ]);
 
+        // @phpstan-ignore-next-line
         $generalSettings = AdminAPI::get()->generalSettings((string)$quote->getStore()->getId())->getGeneralSettings();
         if (!$generalSettings->isSuccessful() || !$builder->isAllowedFor($generalSettings)) {
             return [];
         }
 
+        // @phpstan-ignore-next-line
         $response = CheckoutAPI::get()
             ->solicitation((string)$quote->getStore()->getId())
             ->solicitFor($builder);
@@ -93,10 +97,19 @@ class BaseSequraPaymentMethodsService
         return $response->toArray()['availablePaymentMethods'];
     }
 
+    /**
+     * Gets the payment form for given cart ID
+     *
+     * @param string $cartId Cart ID to get form for
+     *
+     * @return string Payment form HTML
+     * @throws LocalizedException If form cannot be retrieved
+     */
     public function getForm(string $cartId): string
     {
         $quote = $this->cartProvider->getQuote($cartId);
 
+        // @phpstan-ignore-next-line
         $response = CheckoutAPI::get()
             ->solicitation((string)$quote->getStore()->getId())
             ->solicitFor($this->createOrderRequestBuilderFactory->create([
@@ -113,9 +126,12 @@ class BaseSequraPaymentMethodsService
             $payload = $this->jsonSerializer->unserialize($this->request->getContent());
         }
 
-        $product = !empty($payload['product_data']['sequra_product']) ? $payload['product_data']['sequra_product'] : null;
-        $campaign = !empty($payload['product_data']['sequra_campaign']) ? $payload['product_data']['sequra_campaign'] : null;
+        $product = !empty($payload['product_data']['sequra_product']) ?
+            $payload['product_data']['sequra_product'] : null;
+        $campaign = !empty($payload['product_data']['sequra_campaign']) ?
+            $payload['product_data']['sequra_campaign'] : null;
 
+        // @phpstan-ignore-next-line
         $formResponse = CheckoutAPI::get()
             ->solicitation((string)$quote->getStore()->getId())
             ->getIdentificationForm($quote->getId(), $product, $campaign);

@@ -11,19 +11,19 @@ use SeQura\Core\BusinessLogic\Domain\Order\Models\SeQuraOrder;
 use SeQura\Core\BusinessLogic\Domain\Order\Service\OrderService;
 use SeQura\Core\Infrastructure\ServiceRegister;
 use Sequra\Core\Services\BusinessLogic\Utility\SeQuraTranslationProvider;
-use Sequra\Core\Ui\Component\Listing\Column\SequraOrderLink;
+use Sequra\Core\Helper\UrlHelper;
 
-/**
- * Class OrderDetails
- *
- * @package Sequra\Core\Plugin
- */
 class OrderDetails
 {
     /**
      * @var UrlInterface
      */
     protected $urlBuilder;
+
+    /**
+     * @var UrlHelper
+     */
+    protected $urlHelper;
 
     /**
      * @var Currency
@@ -36,11 +36,11 @@ class OrderDetails
     protected $translation;
 
     /**
-     * @var OrderService
+     * @var OrderService|null
      */
     private $orderService;
 
-    private const statusMap = [
+    private const STATUS_MAP = [
         OrderRequestStates::CONFIRMED => 'sequra.status.paid',
         OrderRequestStates::ON_HOLD => 'sequra.status.pendingReview',
         OrderRequestStates::CANCELLED => 'sequra.status.cancelled',
@@ -50,20 +50,26 @@ class OrderDetails
      * @param UrlInterface $urlBuilder
      * @param Currency $currencyModel
      * @param SeQuraTranslationProvider $translation
+     * @param UrlHelper $urlHelper
      */
-    public function __construct(UrlInterface $urlBuilder, Currency $currencyModel, SeQuraTranslationProvider $translation)
-    {
+    public function __construct(
+        UrlInterface $urlBuilder,
+        Currency $currencyModel,
+        SeQuraTranslationProvider $translation,
+        UrlHelper $urlHelper
+    ) {
         $this->urlBuilder = $urlBuilder;
         $this->currencyModel = $currencyModel;
         $this->translation = $translation;
+        $this->urlHelper = $urlHelper;
     }
 
     /**
      * Modifies the "order_payment_additional" html element in order to inject addition SeQura payment information.
      *
      * @param Info $subject
-     * @param $result
-     * @param $childName
+     * @param string $result
+     * @param string $childName
      *
      * @return string
      */
@@ -93,10 +99,12 @@ class OrderDetails
         $paymentAmount = $this->getPaymentAmount($order);
         $paymentMethodName = $order->getPaymentMethod() ? $order->getPaymentMethod()->getName() : '/';
         $paymentMethodIcon = $order->getPaymentMethod() ? $order->getPaymentMethod()->getIcon() ?? '/' : '/';
-        $sequraLink = $this->urlBuilder->getUrl(SequraOrderLink::SEQURA_PORTAL_URL . $order->getReference());
+        $sequraLink = $this->urlHelper->getBackendUrlForSequraOrder($order->getReference());
 
         $viewOnSeQuraButton = '';
         if ($order->getState() === OrderRequestStates::CONFIRMED) {
+            // TODO: Look for an alternative to html_entity_decode
+            // phpcs:ignore Magento2.Functions.DiscouragedFunction.Discouraged
             $viewOnSeQuraButton = html_entity_decode('
                 <a class="sequra-link" href="' . $sequraLink . '" target="_blank">
                   <button class="sequra-preview">' . $this->translation->translate("sequra.viewOnSequra") . '</button>
@@ -104,6 +112,8 @@ class OrderDetails
             ');
         }
 
+        // TODO: Look for an alternative to html_entity_decode
+        // phpcs:ignore Magento2.Functions.DiscouragedFunction.Discouraged
         return html_entity_decode('
             <table class="sequra-table">
               <tr>
@@ -120,7 +130,9 @@ class OrderDetails
 
             <div class="sequra-info-field">
               <div class="sequra-title">' . $this->translation->translate("sequra.status") . '</div>
-              <div>' . $this->translation->translate("sequra.order") . ' ' . $this->translation->translate(self::statusMap[$order->getState()]) . '</div>
+              <div>' . $this->translation->translate("sequra.order") . ' ' . $this->translation->translate(
+                  self::STATUS_MAP[$order->getState()]
+              ) . '</div>
             </div>
 
             <div class="sequra-info-field">

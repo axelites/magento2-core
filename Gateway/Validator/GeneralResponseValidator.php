@@ -6,19 +6,23 @@ use Magento\Payment\Gateway\Validator\ResultInterfaceFactory;
 
 class GeneralResponseValidator extends AbstractValidator
 {
+    // phpcs:disable Generic.CodeAnalysis.UselessOverridingMethod.Found
     /**
      * Constructor
      *
      * @param ResultInterfaceFactory $resultFactory
      */
-    public function __construct(
-        ResultInterfaceFactory $resultFactory
-    ) {
+    public function __construct(ResultInterfaceFactory $resultFactory)
+    {
         parent::__construct($resultFactory);
     }
+    // phpcs:enable
 
     /**
      * @inheritdoc
+     *
+     * @param array $validationSubject
+     * @phpstan-param array<string, array<string, string>> $validationSubject
      */
     public function validate(array $validationSubject)
     {
@@ -29,7 +33,7 @@ class GeneralResponseValidator extends AbstractValidator
         $errorCodes = [];
         if (!empty($response['errorMessage'])) {
             $isValid = false;
-            $errorMessages[] = $validationSubject['response']['errorMessage'];
+            $errorMessages[] = $response['errorMessage'];
         }
 
         return $this->createResult($isValid, $errorMessages, $errorCodes);

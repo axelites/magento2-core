@@ -8,11 +8,6 @@ use Magento\Framework\Controller\Result\JsonFactory;
 use SeQura\Core\BusinessLogic\AdminAPI\AdminAPI;
 use SeQura\Core\BusinessLogic\AdminAPI\GeneralSettings\Requests\GeneralSettingsRequest;
 
-/**
- * Class GeneralSettings
- *
- * @package Sequra\Core\Controller\Adminhtml\Configuration
- */
 class GeneralSettings extends BaseConfigurationController
 {
     /**
@@ -35,6 +30,7 @@ class GeneralSettings extends BaseConfigurationController
      */
     protected function getShopCategories(): Json
     {
+        // @phpstan-ignore-next-line
         $data = AdminAPI::get()->generalSettings($this->storeId)->getShopCategories();
         $this->addResponseCode($data);
 
@@ -48,6 +44,7 @@ class GeneralSettings extends BaseConfigurationController
      */
     protected function getGeneralSettings(): Json
     {
+        // @phpstan-ignore-next-line
         $data = AdminAPI::get()->generalSettings($this->storeId)->getGeneralSettings();
         $this->addResponseCode($data);
 
@@ -61,13 +58,38 @@ class GeneralSettings extends BaseConfigurationController
      */
     protected function setGeneralSettings(): Json
     {
+        /**
+         * @var array<string, null|bool|array<string>> $data
+         */
         $data = $this->getSequraPostData();
+        /**
+         * @var bool $sendOrderReportsPeriodicallyToSeQura
+         */
+        $sendOrderReportsPeriodicallyToSeQura = $data['sendOrderReportsPeriodicallyToSeQura'] ?? true;
+        /**
+         * @var bool $showSeQuraCheckoutAsHostedPage
+         */
+        $showSeQuraCheckoutAsHostedPage = $data['showSeQuraCheckoutAsHostedPage'] ?? false;
+        /**
+         * @var array<string> $allowedIPAddresses
+         */
+        $allowedIPAddresses = $data['allowedIPAddresses'] ?? [];
+        /**
+         * @var array<string> $excludedProducts
+         */
+        $excludedProducts = $data['excludedProducts'] ?? [];
+        /**
+         * @var array<string> $excludedCategories
+         */
+        $excludedCategories = $data['excludedCategories'] ?? [];
+        
+        // @phpstan-ignore-next-line
         $response = AdminAPI::get()->generalSettings($this->storeId)->saveGeneralSettings(new GeneralSettingsRequest(
-            $data['showSeQuraCheckoutAsHostedPage'],
-            $data['sendOrderReportsPeriodicallyToSeQura'],
-            $data['allowedIPAddresses'],
-            $data['excludedProducts'],
-            $data['excludedCategories']
+            $sendOrderReportsPeriodicallyToSeQura,
+            $showSeQuraCheckoutAsHostedPage,
+            $allowedIPAddresses,
+            $excludedProducts,
+            $excludedCategories
         ));
 
         $this->addResponseCode($response);

@@ -7,11 +7,6 @@ use Magento\Framework\Controller\Result\Json;
 use Magento\Framework\Controller\Result\JsonFactory;
 use SeQura\Core\BusinessLogic\AdminAPI\AdminAPI;
 
-/**
- * Class Integration
- *
- * @package Sequra\Core\Controller\Adminhtml\Configuration
- */
 class Integration extends BaseConfigurationController
 {
     /**
@@ -34,6 +29,7 @@ class Integration extends BaseConfigurationController
      */
     protected function getVersion(): Json
     {
+        // @phpstan-ignore-next-line
         $data = AdminAPI::get()->integration($this->storeId)->getVersion();
         $this->addResponseCode($data);
 
@@ -47,12 +43,12 @@ class Integration extends BaseConfigurationController
      */
     protected function getState(): Json
     {
+        // @phpstan-ignore-next-line
         $data = AdminAPI::get()->integration($this->storeId)->getUIState();
         $this->addResponseCode($data);
 
         return $this->result->setData($data->toArray());
     }
-
 
     /**
      * Returns the integration shop name.
@@ -61,6 +57,7 @@ class Integration extends BaseConfigurationController
      */
     protected function getShopName(): Json
     {
+        // @phpstan-ignore-next-line
         $data = AdminAPI::get()->integration($this->storeId)->getShopName();
         $this->addResponseCode($data);
 

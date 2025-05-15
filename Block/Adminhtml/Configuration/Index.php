@@ -8,10 +8,6 @@ use Magento\Backend\Model\Auth\Session;
 use Magento\Framework\Exception\LocalizedException;
 use Sequra\Core\Helper\UrlHelper;
 
-/**
- * Class Index
- *
- */
 class Index extends Template
 {
     /**
@@ -29,14 +25,13 @@ class Index extends Template
      * @param Context $context
      * @param UrlHelper $urlHelper
      * @param Session $authSession
-     * @param array $data
+     * @param mixed[] $data
      */
-    public function __construct(
-        Context $context,
-        UrlHelper $urlHelper,
-        Session $authSession,
-        array $data = []
-    ) {
+    public function __construct(Context $context, UrlHelper $urlHelper, Session $authSession, array $data = [])
+    {
+        if (!is_iterable($data)) {
+            throw new \InvalidArgumentException('Data must be iterable');
+        }
         parent::__construct($context, $data);
 
         $this->urlHelper = $urlHelper;
@@ -49,6 +44,7 @@ class Index extends Template
      * @param string $controllerName Name of the configuration controller.
      * @param string $storeId Store id.
      * @param string $action Controller action.
+     * @param string|null $identifier Optional identifier parameter.
      *
      * @return string URL to backend configuration controller.
      *
@@ -59,8 +55,7 @@ class Index extends Template
         string $storeId,
         string $action,
         string $identifier = null
-    ): string
-    {
+    ): string {
         $routeParams = [
             'storeId' => $storeId,
             'action' => $action,
@@ -75,29 +70,43 @@ class Index extends Template
     /**
      * Returns Sequra module translations in the default and the current system language.
      *
-     * @return array
+     * @return array<string, mixed>
      */
     public function getTranslations(): array
     {
-        $currentLocale = substr($this->authSession->getUser()->getInterfaceLocale(), 0, 2);
-        $default = json_decode(file_get_contents(__DIR__ . '/../../../view/adminhtml/web/lang/en.json'), false);
+        $user = $this->authSession->getUser();
+        $currentLocale = strtolower($user ? substr($user->getInterfaceLocale(), 0, 2) : 'en');
+        $langDir = __DIR__ . '/../../../view/adminhtml/web/lang/';
+        // TODO: The use of function file_get_contents() is discouraged
+        // phpcs:ignore Magento2.Functions.DiscouragedFunction.Discouraged
+        $default = json_decode((string) file_get_contents($langDir . 'en.json'), false);
         $current = [];
 
-        if (file_exists(__DIR__ . '/../../../view/adminhtml/web/lang/' . $currentLocale . '.json')) {
+        // TODO: The use of function file_exists() is discouraged
+        // phpcs:ignore Magento2.Functions.DiscouragedFunction.Discouraged
+        if (file_exists($langDir . $currentLocale . '.json')) {
             $current = json_decode(
-                file_get_contents(__DIR__ . '/../../../view/adminhtml/web/lang/' . $currentLocale . '.json'),
+                // TODO: The use of function file_get_contents() is discouraged
+                // phpcs:ignore Magento2.Functions.DiscouragedFunction.Discouraged
+                (string) file_get_contents($langDir . $currentLocale . '.json'),
                 false
             );
         }
 
         return [
-            'default' => str_replace("'", "\\'", json_encode($default)),
-            'current' => str_replace("'", "\\'", json_encode($current)),
+            'default' => str_replace("'", "\\'", (string) json_encode($default)),
+            'current' => str_replace("'", "\\'", (string) json_encode($current)),
         ];
     }
 
+    /**
+     * Get the admin language
+     *
+     * @return string
+     */
     public function getAdminLanguage(): string
     {
-        return strtoupper(substr($this->authSession->getUser()->getInterfaceLocale(), 0, 2));
+        $user = $this->authSession->getUser();
+        return strtoupper($user ? substr($user->getInterfaceLocale(), 0, 2) : 'en');
     }
 }

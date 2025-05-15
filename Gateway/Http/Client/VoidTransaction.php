@@ -11,8 +11,11 @@ use Magento\Payment\Gateway\Http\TransferInterface;
 class VoidTransaction implements ClientInterface
 {
     /**
+     * Place request
+     *
      * @param TransferInterface $transferObject
-     * @return array
+     *
+     * @return array<string, bool>
      */
     public function placeRequest(TransferInterface $transferObject)
     {

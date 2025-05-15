@@ -12,6 +12,7 @@ use SeQura\Core\Infrastructure\Logger\Logger;
 use SeQura\Core\Infrastructure\ServiceRegister;
 use Sequra\Core\Services\BusinessLogic\Utility\SeQuraTranslationProvider;
 use Sequra\Core\Services\BusinessLogic\Utility\TransformEntityService;
+use SeQura\Core\Infrastructure\Logger\LogContextData;
 
 /**
  * Class TransactionSale
@@ -29,36 +30,43 @@ class OrderUpdateTransaction implements ClientInterface
     private $transformService;
 
     /**
-     * @var OrderService
+     * @var OrderService|null
      */
     private $orderService;
 
     /**
+     * Constructor
+     *
      * @param SeQuraTranslationProvider $translationProvider
      * @param TransformEntityService $transformService
      */
-    public function __construct(SeQuraTranslationProvider $translationProvider, TransformEntityService $transformService)
-    {
+    public function __construct(
+        SeQuraTranslationProvider $translationProvider,
+        TransformEntityService $transformService
+    ) {
         $this->translationProvider = $translationProvider;
         $this->transformService = $transformService;
     }
 
     /**
+     * Place request
+     *
      * @param TransferInterface $transferObject
-     * @return array
+     *
+     * @return array<string, \Magento\Framework\Phrase|bool|\SeQura\Core\BusinessLogic\Domain\Order\Models\SeQuraOrder>
      */
     public function placeRequest(TransferInterface $transferObject): array
     {
-        /** @var Order $order */
-        $order = $transferObject->getBody()['order'];
-        if (!$order) {
+        $body = $transferObject->getBody();
+        if (!is_array($body) || !isset($body['order']) || !$body['order'] instanceof Order) {
             Logger::logError('Order synchronization for refund failed. Missing refund request data.', 'Integration');
-
+            
             return [
                 'success' => false,
                 'errorMessage' => $this->translationProvider->translate('sequra.error.cannotRefund')
             ];
         }
+        $order = $body['order'];
 
         if ($order->getStatus() === Order::STATE_PAYMENT_REVIEW) {
             Logger::logError(
@@ -74,9 +82,15 @@ class OrderUpdateTransaction implements ClientInterface
 
         $shippedCart = $this->transformService->transformOrderCartToSeQuraCart($order, true);
         $unshippedCart = $this->transformService->transformOrderCartToSeQuraCart($order, false);
-
+        $sequraOrder = null;
         try {
-            $sequraOrder = StoreContext::doWithStore($order->getStoreId(), [$this->getOrderService(), 'updateOrder'], [
+            /**
+            * @var \SeQura\Core\BusinessLogic\Domain\Order\Models\SeQuraOrder $sequraOrder
+            */
+            $sequraOrder = StoreContext::doWithStore(
+                (string) $order->getStoreId(),
+                [$this->getOrderService(), 'updateOrder'],
+                [
                 new OrderUpdateData(
                     $order->getIncrementId(),
                     $shippedCart,
@@ -84,14 +98,15 @@ class OrderUpdateTransaction implements ClientInterface
                     null,
                     null
                 )
-            ]);
+                ]
+            );
         } catch (\Exception $exception) {
             Logger::logError(
                 'Order synchronization for refund failed. Order update request failed.',
                 'Integration',
                 [
-                    'ExceptionMessage' => $exception->getMessage(),
-                    'ExceptionTrace' => $exception->getTraceAsString(),
+                    new LogContextData('ExceptionMessage', $exception->getMessage()),
+                    new LogContextData('ExceptionTrace', $exception->getTraceAsString()),
                 ]
             );
 

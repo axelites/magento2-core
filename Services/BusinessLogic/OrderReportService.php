@@ -14,11 +14,6 @@ use SeQura\Core\BusinessLogic\Domain\Order\Models\OrderRequest\Platform;
 use SeQura\Core\BusinessLogic\Domain\OrderReport\Models\OrderStatistics;
 use Sequra\Core\Services\BusinessLogic\Utility\TransformEntityService;
 
-/**
- * Class OrderReportService
- *
- * @package Sequra\Core\Services\BusinessLogic
- */
 class OrderReportService implements OrderReportServiceInterface
 {
     /**
@@ -59,8 +54,7 @@ class OrderReportService implements OrderReportServiceInterface
         DeploymentConfig         $deploymentConfig,
         SqlVersionProvider       $sqlVersionProvider,
         ResourceConnection       $resourceConnection
-    )
-    {
+    ) {
         $this->productMetadata = $productMetadata;
         $this->moduleResource = $moduleResource;
         $this->deploymentConfig = $deploymentConfig;
@@ -109,8 +103,12 @@ class OrderReportService implements OrderReportServiceInterface
      */
     public function getPlatform(): Platform
     {
+        /**
+         * @var array<string, string> $connectionData
+         */
         $connectionData = $this->deploymentConfig->get(
-            ConfigOptionsListConstants::CONFIG_PATH_DB_CONNECTION_DEFAULT, []
+            ConfigOptionsListConstants::CONFIG_PATH_DB_CONNECTION_DEFAULT,
+            []
         );
 
         return Platform::fromArray([
@@ -128,6 +126,7 @@ class OrderReportService implements OrderReportServiceInterface
      * Creates an instance of OrderStatistics from magento Order.
      *
      * @param array $orderInfo
+     * @phpstan-param array<string, string|float|int> $orderInfo
      *
      * @return OrderStatistics
      */
@@ -138,7 +137,7 @@ class OrderReportService implements OrderReportServiceInterface
         return OrderStatistics::fromArray([
             'completed_at' => $orderInfo['created_at'] ?? '',
             'currency' => $orderInfo['order_currency_code'] ?? '',
-            'amount' => TransformEntityService::transformPrice($amount),
+            'amount' => TransformEntityService::transformPrice((float) $amount),
             'merchant_reference' => [
                 'order_ref_1' => $orderInfo['increment_id'] ?? ''
             ],

@@ -4,32 +4,37 @@ namespace Sequra\Core\Services\BusinessLogic;
 
 use Exception;
 use SeQura\Core\BusinessLogic\AdminAPI\AdminAPI;
+use SeQura\Core\BusinessLogic\CheckoutAPI\CheckoutAPI;
+use SeQura\Core\BusinessLogic\CheckoutAPI\PaymentMethods\Requests\GetCachedPaymentMethodsRequest;
+use SeQura\Core\BusinessLogic\CheckoutAPI\PaymentMethods\Responses\CachedPaymentMethodsResponse;
 use SeQura\Core\BusinessLogic\Domain\Integration\Store\StoreServiceInterface;
 use SeQura\Core\Infrastructure\Http\Exceptions\HttpRequestException;
 use SeQura\Core\Infrastructure\ServiceRegister;
 
-/**
- * Class PaymentMethodsService
- *
- * @package Sequra\Core\Services\BusinessLogic
- */
 class PaymentMethodsService
 {
     /**
      * Retrieves payment methods per store.
      *
      * @return array
+     * @phpstan-return array<string, array<int, array<string, mixed>>>
      *
      * @throws HttpRequestException
      * @throws Exception
      */
     public function getPaymentMethods(): array
     {
-        $stores = $this->getStoreService()->getConnectedStores();
         $result = [];
+        /**
+         * TODO: getConnectedStores() should be moved to StoreServiceInterface
+         * @var \Sequra\Core\Services\BusinessLogic\StoreService $storeService
+         */
+        $storeService = $this->getStoreService();
+        $stores = $storeService->getConnectedStores();
 
-        foreach ($stores as $store) {
-            $countryConfigurations = AdminAPI::get()->countryConfiguration($store)
+        foreach ($stores as $storeId) {
+            // @phpstan-ignore-next-line
+            $countryConfigurations = AdminAPI::get()->countryConfiguration($storeId)
                 ->getCountryConfigurations()->toArray();
             $firstConfig = array_shift($countryConfigurations);
 
@@ -37,24 +42,29 @@ class PaymentMethodsService
                 continue;
             }
 
-            $widgetsConfig = AdminAPI::get()->widgetConfiguration($store)->getWidgetSettings()->toArray();
+            // @phpstan-ignore-next-line
+            $widgetsConfig = AdminAPI::get()->widgetConfiguration($storeId)->getWidgetSettings()->toArray();
 
             if (isset($widgetsConfig['errorCode']) || !$widgetsConfig['useWidgets']) {
                 continue;
             }
 
-            $paymentProducts = AdminAPI::get()->paymentMethods($store)
-                ->getPaymentMethods($firstConfig['merchantId'])->toArray();
+            /** @var CachedPaymentMethodsResponse $paymentMethods */
+            $paymentMethods = CheckoutAPI::get()->cachedPaymentMethods($storeId)
+                ->getCachedPaymentMethods(new GetCachedPaymentMethodsRequest($firstConfig['merchantId']));
 
-            if (!$paymentProducts || isset($paymentProducts['errorCode'])) {
+            if (!$paymentMethods->isSuccessful()) {
                 continue;
             }
 
-            foreach ($paymentProducts as $product) {
-                $result[$store][] = [
-                    'product' => $product['product'],
-                    'title' => $product['title'],
-                    'campaign' => $product['campaign']
+            foreach ($paymentMethods->toArray() as $product) {
+                if (!is_array($product)) {
+                    continue;
+                }
+                $result[$storeId][] = [
+                    'product' => $product['product'] ?? '',
+                    'title' => $product['title'] ?? '',
+                    'campaign' => $product['campaign'] ?? '',
                 ];
             }
         }
@@ -63,6 +73,8 @@ class PaymentMethodsService
     }
 
     /**
+     * Get store service instance.
+     *
      * @return StoreServiceInterface
      */
     private function getStoreService(): StoreServiceInterface

@@ -9,11 +9,6 @@ use Magento\Store\Model\StoreManagerInterface;
 use SeQura\Core\BusinessLogic\Domain\Integration\SellingCountries\SellingCountriesServiceInterface;
 use SeQura\Core\BusinessLogic\Domain\Multistore\StoreContext;
 
-/**
- * Class SellingCountriesService
- *
- * @package Sequra\Core\Services\BusinessLogic
- */
 class SellingCountriesService implements SellingCountriesServiceInterface
 {
     /**
@@ -26,6 +21,12 @@ class SellingCountriesService implements SellingCountriesServiceInterface
      */
     private $storeManager;
 
+    /**
+     * SellingCountriesService constructor.
+     *
+     * @param AllowedCountries $country
+     * @param StoreManagerInterface $storeManager
+     */
     public function __construct(AllowedCountries $country, StoreManagerInterface $storeManager)
     {
         $this->country = $country;
@@ -40,7 +41,7 @@ class SellingCountriesService implements SellingCountriesServiceInterface
     public function getSellingCountries(): array
     {
         $store = $this->storeManager->getStore(StoreContext::getInstance()->getStoreId());
-
+        // @phpstan-ignore-next-line
         return $this->country->getAllowedCountries(ScopeInterface::SCOPE_WEBSITES, [$store->getWebsiteId()]);
     }
 }

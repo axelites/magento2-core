@@ -1,0 +1,92 @@
+x-env_file: &env_file
+  env_file:
+    - .env
+
+services:
+  magento:
+    image: ghcr.io/sequra/magento2-core:$M2_VERSION-$PHP_VERSION
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - $M2_HTTP_PORT:80
+    volumes:
+      - m2_html:/var/www/html
+      - .:/Sequra/Core:ro
+      - ./.docker/magento/HelperModule/Sequra:/var/www/html/app/code/Sequra
+      - ./.docker/magento/xdebug-profile:/tmp/xdebug
+    extra_hosts:
+      - "host.docker.internal:host-gateway" # For XDebug to work properly on Linux
+      - "${M2_HTTP_HOST}:host-gateway"
+    <<: *env_file
+
+  mariadb:
+    image: mariadb:$MARIADB_TAG
+    ports:
+      - $MARIADB_PORT:3306
+    <<: *env_file
+    volumes:
+      - m2_db:/var/lib/mysql
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost" ]
+      interval: 1s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:$REDIS_TAG
+    ports:
+      - $REDIS_PORT:6379
+    volumes:
+      - m2_redis:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 1s
+      timeout: 3s
+      retries: 10
+
+  elasticsearch:
+    image: elasticsearch:$ELASTICSEARCH_TAG
+    ports:
+      - $ELASTICSEARCH_API_PORT:9200
+      - $ELASTICSEARCH_INTERNODE_PORT:9300
+    environment:
+      - discovery.type=single-node
+      - cluster.name=elasticsearch
+      - node.name=elasticsearch
+      - bootstrap.memory_lock=true
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - m2_elasticsearch:/usr/share/elasticsearch/data
+    profiles:
+      - elasticsearch
+  opensearch:
+    image: opensearchproject/opensearch:$OPENSEARCH_TAG
+    ports:
+      - $OPENSEARCH_API_PORT:9200
+      - $OPENSEARCH_INTERNODE_PORT:9600
+    environment:
+      - discovery.type=single-node
+      - DISABLE_SECURITY_PLUGIN=true
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - m2_opensearch:/usr/share/opensearch/data
+    profiles:
+      - opensearch
+
+volumes:
+  m2_db:
+  m2_redis:
+  m2_elasticsearch:
+  m2_opensearch:
+  m2_html:

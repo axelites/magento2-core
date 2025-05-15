@@ -8,6 +8,7 @@
         "pagos",
         "magento2"
     ],
+    "version": "2.6.0",
     "license": "MIT",
     "authors": [
         {
@@ -18,16 +19,9 @@
     "minimum-stability": "stable",
     "require": {
         "php": ">=7.4",
-        "sequra/integration-core": "v1.0.11",
+        "sequra/integration-core": "v1.1.1",
         "ext-json": "*"
     },
-    "repositories": [
-        {
-            "type": "vcs",
-            "no-api": true,
-            "url": "git@github.com:sequra/integration-core.git"
-        }
-    ],
     "autoload": {
         "files": [
             "registration.php"
@@ -44,9 +38,24 @@
     },
     "archive": {
         "exclude": [
-            "docs",
-            "scripts",
-            "Test"
+            ".docker",
+            ".github",
+            "bin",
+            "docker-entrypoint-init.d",
+            "Test",
+            ".env",
+            ".env.sample",
+            ".gitattributes",
+            ".gitignore",
+            "docker-compose.override.sample.yml",
+            "docker-compose.yml",
+            "README.md",
+            "setup.sh",
+            "teardown.sh",
+            "tests-e2e",
+            "package.json",
+            "package-lock.json",
+            "playwright.config.js"
         ]
     },
     "require-dev": {

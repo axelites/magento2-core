@@ -12,6 +12,9 @@ use Magento\Store\Api\StoreConfigManagerInterface;
 use Magento\Store\Model\ScopeInterface;
 use Magento\Store\Model\StoreManagerInterface;
 use SeQura\Core\BusinessLogic\AdminAPI\AdminAPI;
+use SeQura\Core\BusinessLogic\CheckoutAPI\CheckoutAPI;
+use SeQura\Core\BusinessLogic\CheckoutAPI\PaymentMethods\Requests\GetCachedPaymentMethodsRequest;
+use SeQura\Core\BusinessLogic\CheckoutAPI\PaymentMethods\Responses\CachedPaymentMethodsResponse;
 use SeQura\Core\BusinessLogic\DataAccess\PromotionalWidgets\Entities\WidgetSettings as WidgetSettingsEntity;
 use SeQura\Core\BusinessLogic\Domain\Connection\Models\ConnectionData;
 use SeQura\Core\BusinessLogic\Domain\Connection\Services\ConnectionService;
@@ -19,8 +22,6 @@ use SeQura\Core\BusinessLogic\Domain\CountryConfiguration\Models\CountryConfigur
 use SeQura\Core\BusinessLogic\Domain\CountryConfiguration\Services\CountryConfigurationService;
 use SeQura\Core\BusinessLogic\Domain\Integration\Store\StoreServiceInterface;
 use SeQura\Core\BusinessLogic\Domain\Multistore\StoreContext;
-use SeQura\Core\BusinessLogic\Domain\PaymentMethod\Models\SeQuraPaymentMethod;
-use SeQura\Core\BusinessLogic\Domain\PaymentMethod\Services\PaymentMethodsService;
 use SeQura\Core\BusinessLogic\Domain\PromotionalWidgets\Models\WidgetSettings;
 use SeQura\Core\BusinessLogic\Domain\PromotionalWidgets\Services\WidgetSettingsService;
 use SeQura\Core\BusinessLogic\Domain\Stores\Models\Store;
@@ -30,11 +31,6 @@ use SeQura\Core\Infrastructure\ORM\Exceptions\RepositoryNotRegisteredException;
 use SeQura\Core\Infrastructure\ORM\RepositoryRegistry;
 use SeQura\Core\Infrastructure\ServiceRegister;
 
-/**
- * Class WidgetConfigService
- *
- * @package Sequra\Core\Services\BusinessLogic
- */
 class WidgetConfigService
 {
     public const TEST_SCRIPT_URL = 'https://sandbox.sequracdn.com/assets/sequra-checkout.min.js';
@@ -74,13 +70,12 @@ class WidgetConfigService
      * @param ScopeConfigInterface $scopeConfig
      */
     public function __construct(
-        StoreManagerInterface                         $storeManager,
+        StoreManagerInterface $storeManager,
         \Magento\Framework\App\ScopeResolverInterface $scopeResolver,
-        \Magento\Framework\Locale\ResolverInterface   $localeResolver,
+        \Magento\Framework\Locale\ResolverInterface $localeResolver,
         StoreConfigManagerInterface $storeConfigManager,
         ScopeConfigInterface $scopeConfig
-    )
-    {
+    ) {
         $this->storeManager = $storeManager;
         $this->scopeResolver = $scopeResolver;
         $this->localeResolver = $localeResolver;
@@ -90,9 +85,12 @@ class WidgetConfigService
     }
 
     /**
+     * Get data
+     *
      * @param string $storeId
      *
-     * @return array[]
+     * @return array
+     * @phpstan-return array<string, mixed[]|bool|string|null>
      *
      * @throws Exception
      */
@@ -110,13 +108,22 @@ class WidgetConfigService
             return [];
         }
 
-        return StoreContext::doWithStore($store->getStoreId(), function () use ($isPreview) {
+        /**
+         * @var array<string, mixed[]|bool|string|null> $data
+         */
+        $data = StoreContext::doWithStore($store->getStoreId(), function () use ($isPreview) {
             return $this->getConfigData($isPreview);
         });
+        return $data;
     }
 
     /**
-     * @return array[]
+     * Get configuration data
+     *
+     * @param bool $isPreview Whether this is a preview mode request
+     *
+     * @return array
+     * @phpstan-return array<string, mixed[]|bool|string|null>
      *
      * @throws HttpRequestException
      * @throws NoSuchEntityException
@@ -141,13 +148,25 @@ class WidgetConfigService
             return [];
         }
 
-        $products = $this->getProducts($merchantId);
+        /**
+         * @var CachedPaymentMethodsResponse $paymentMethods
+         * @phpstan-ignore-next-line
+         */
+        $paymentMethods = CheckoutAPI::get()->cachedPaymentMethods(StoreContext::getInstance()->getStoreId())
+            ->getCachedPaymentMethods(new GetCachedPaymentMethodsRequest($merchantId));
+
+        if (!$paymentMethods->isSuccessful()) {
+            return [];
+        }
         $formattedProducts = [];
 
-        foreach ($products as $product) {
+        foreach ($paymentMethods->toArray() as $product) {
+            if (!is_array($product)) {
+                continue;
+            }
             $formattedProducts[] = [
-                'id' => $product->getProduct(),
-                'campaign' => $product->getCampaign(),
+                'id' => $product['product'] ?? '',
+                'campaign' => $product['campaign'] ?? '',
             ];
         }
 
@@ -169,8 +188,10 @@ class WidgetConfigService
     }
 
     /**
-     * @param string|null $code
-     * @param bool $isPreview
+     * Get merchant ID
+     *
+     * @param string|null $code Country code
+     * @param bool $isPreview Whether this is a preview mode request
      *
      * @return string
      */
@@ -196,16 +217,29 @@ class WidgetConfigService
         return $merchantId;
     }
 
+    /**
+     * Get country code
+     *
+     * @param StoreConfigInterface $storeConfig
+     *
+     * @return string
+     */
     private function getCountry(StoreConfigInterface $storeConfig)
     {
-        return $this->scopeConfig->getValue(
+        /**
+         * @var string $value
+         */
+        $value = $this->scopeConfig->getValue(
             'general/country/default',
             ScopeInterface::SCOPE_STORE,
             $storeConfig->getId()
         );
+        return $value;
     }
 
     /**
+     * Get country configuration
+     *
      * @return CountryConfiguration[]|null
      */
     private function getCountryConfiguration(): ?array
@@ -214,6 +248,8 @@ class WidgetConfigService
     }
 
     /**
+     * Get connection settings
+     *
      * @return ConnectionData|null
      */
     private function getConnectionSettings(): ?ConnectionData
@@ -222,6 +258,8 @@ class WidgetConfigService
     }
 
     /**
+     * Get widget settings
+     *
      * @return WidgetSettings|null
      *
      * @throws Exception
@@ -232,21 +270,18 @@ class WidgetConfigService
     }
 
     /**
-     * @param string $merchantId
+     * Fetch number formatter.
      *
-     * @return SeQuraPaymentMethod[]
-     *
-     * @throws HttpRequestException
+     * @return \NumberFormatter
      */
-    private function getProducts(string $merchantId): array
-    {
-        return $this->getPaymentMethodsService()->getMerchantsPaymentMethods($merchantId);
-    }
-
     private function getFormatter(): \NumberFormatter
     {
         $localeCode = $this->localeResolver->getLocale();
-        $currency = $this->scopeResolver->getScope()->getCurrentCurrency();
+         /**
+         * @var \Magento\Store\Model\Store $store
+         */
+        $store = $this->scopeResolver->getScope();
+        $currency = $store->getCurrentCurrency();
         return new \NumberFormatter(
             $localeCode . '@currency=' . $currency->getCode(),
             \NumberFormatter::CURRENCY
@@ -254,6 +289,8 @@ class WidgetConfigService
     }
 
     /**
+     * Get the default store
+     *
      * @return Store|null
      *
      * @throws RepositoryNotRegisteredException
@@ -274,16 +311,24 @@ class WidgetConfigService
     }
 
     /**
-     * @return array
+     * Get enabled stores
+     *
+     * @return array<string>
      *
      * @throws Exception
      */
     private function getEnabledStores(): array
     {
-        $stores = $this->getStoreService()->getConnectedStores();
+        /**
+         * TODO: getConnectedStores() should be moved to StoreServiceInterface
+         * @var \Sequra\Core\Services\BusinessLogic\StoreService $storeService
+         */
+        $storeService = $this->getStoreService();
+        $stores = $storeService->getConnectedStores();
         $result = [];
 
         foreach ($stores as $store) {
+            // @phpstan-ignore-next-line
             $widgetsConfig = AdminAPI::get()->widgetConfiguration($store)->getWidgetSettings()->toArray();
 
             if (isset($widgetsConfig['errorCode']) || !$widgetsConfig['useWidgets']) {
@@ -297,6 +342,8 @@ class WidgetConfigService
     }
 
     /**
+     * Get the store service
+     *
      * @return StoreServiceInterface
      */
     private function getStoreService(): StoreServiceInterface
@@ -305,6 +352,8 @@ class WidgetConfigService
     }
 
     /**
+     * Get the widget settings service
+     *
      * @return WidgetSettingsService
      */
     private function getWidgetSettingsService(): WidgetSettingsService
@@ -313,6 +362,8 @@ class WidgetConfigService
     }
 
     /**
+     * Get the connection service
+     *
      * @return ConnectionService
      */
     private function getConnectionService(): ConnectionService
@@ -321,14 +372,8 @@ class WidgetConfigService
     }
 
     /**
-     * @return PaymentMethodsService
-     */
-    private function getPaymentMethodsService(): PaymentMethodsService
-    {
-        return ServiceRegister::getService(PaymentMethodsService::class);
-    }
-
-    /**
+     * Get the country configuration service
+     *
      * @return CountryConfigurationService
      */
     private function getCountryConfigService(): CountryConfigurationService

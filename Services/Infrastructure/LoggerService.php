@@ -11,11 +11,6 @@ use SeQura\Core\Infrastructure\Singleton;
 use Sequra\Core\Services\BusinessLogic\ConfigurationService;
 use Psr\Log\LoggerInterface;
 
-/**
- * Class LoggerService
- *
- * @package Sequra\Core\Services\Infrastructure
- */
 class LoggerService extends Singleton implements ShopLoggerAdapter
 {
     /**
@@ -27,7 +22,7 @@ class LoggerService extends Singleton implements ShopLoggerAdapter
     /**
      * Log level names for corresponding log level codes.
      *
-     * @var array
+     * @var array<string>
      */
     private static $logLevelName = [
         Logger::ERROR => 'error',
@@ -61,7 +56,7 @@ class LoggerService extends Singleton implements ShopLoggerAdapter
      *
      * @param LogData $data
      */
-    public function logMessage(LogData $data)
+    public function logMessage(LogData $data): void
     {
         /** @var ConfigurationService $configService */
         $configService = ServiceRegister::getService(Configuration::CLASS_NAME);
@@ -82,12 +77,15 @@ class LoggerService extends Singleton implements ShopLoggerAdapter
             $message .= '
             Context data: [';
             foreach ($context as $item) {
+                // TODO: The use of function print_r() is discouraged
+                // phpcs:ignore Magento2.Functions.DiscouragedFunction.Discouraged
                 $message .= '"' . $item->getName() . '" => "' . print_r($item->getValue(), true) . '", ';
             }
 
             $message .= ']';
         }
-
-        \call_user_func([$this->logger, self::$logLevelName[$logLevel]], $message);
+        // TODO: The use of function call_user_func() is discouraged
+        // phpcs:ignore Magento2.Functions.DiscouragedFunction.Discouraged
+        \call_user_func([$this->logger, self::$logLevelName[$logLevel]], $message); // @phpstan-ignore-line
     }
 }

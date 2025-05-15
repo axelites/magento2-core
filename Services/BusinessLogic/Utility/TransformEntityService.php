@@ -40,9 +40,17 @@ class TransformEntityService
      */
     public function transformAddressToSeQuraOrderAddress($address): SeQuraAddress
     {
+        $addressLine1 = $address->getStreet();
+        if (is_array($addressLine1)) {
+            $addressLine1 = implode("\n", $addressLine1);
+        } elseif ($addressLine1 === null) {
+            $addressLine1 = '';
+        } elseif (!is_string($addressLine1)) {
+            $addressLine1 = (string)$addressLine1;
+        }
         return new SeQuraAddress(
             $address->getCompany() ?? '',
-            $address->getStreet() ? implode("\n", $address->getStreet()) : ($address->getStreet() ?? ''),
+            $addressLine1,
             '',
             $address->getPostcode(),
             $address->getCity(),
@@ -72,7 +80,7 @@ class TransformEntityService
     public function transformOrderCartToSeQuraCart(MagentoOrder $orderData, bool $isShipped): SeQuraCart
     {
         return new SeQuraCart(
-            $orderData->getOrderCurrencyCode(),
+            ($orderData->getOrderCurrencyCode() ?? ''),
             false,
             $this->transformOrderItemsToSeQuraCartItems($orderData, $isShipped)
         );
@@ -96,12 +104,14 @@ class TransformEntityService
         $isUnshippedOrFullyShipped = true;
         /** @var MagentoOrder\Item $orderItem */
         foreach ($orderData->getAllVisibleItems() as $orderItem) {
-            $orderItemsTotal += self::transformPrice($orderItem->getRowTotalInclTax());
+            $orderItemsTotal += self::transformPrice($orderItem->getRowTotalInclTax() ?? 0);
             $orderedQty = $orderItem->getQtyOrdered() ? (int)$orderItem->getQtyOrdered() : 0;
             $shippedQty = $orderItem->getQtyShipped() ? (int)$orderItem->getQtyShipped() : 0;
             $refundedQty = $orderItem->getQtyRefunded() ? (int)$orderItem->getQtyRefunded() : 0;
             if (($shippedQty + $refundedQty) > $orderedQty) {
-                throw new LocalizedException($this->translationProvider->translate('sequra.error.invalidShipRefundQuantity'));
+                throw new LocalizedException(
+                    $this->translationProvider->translate('sequra.error.invalidShipRefundQuantity')
+                );
             }
 
             $quantity = $isShipped ? $shippedQty : $orderedQty - $shippedQty - $refundedQty;
@@ -119,9 +129,9 @@ class TransformEntityService
                 'type' => ItemType::TYPE_PRODUCT,
                 'reference' => $orderItem->getSku(),
                 'name' => $orderItem->getName(),
-                'price_with_tax' => self::transformPrice($orderItem->getPriceInclTax()),
+                'price_with_tax' => self::transformPrice($orderItem->getPriceInclTax() ?? 0),
                 'quantity' => $quantity,
-                'total_with_tax' => self::transformPrice($orderItem->getPriceInclTax()) * $quantity,
+                'total_with_tax' => self::transformPrice($orderItem->getPriceInclTax() ?? 0) * $quantity,
                 'downloadable' => (bool)$orderItem->getIsVirtual(),
                 'description' => $orderItem->getDescription(),
                 'category' => ($product && $product->getCategory()) ? $product->getCategory()->getName() : '',
@@ -130,7 +140,8 @@ class TransformEntityService
             ]);
         }
 
-        $refundedShippingAmount = $orderData->getShippingRefunded() ? self::transformPrice($orderData->getShippingRefunded()) : 0;
+        $refundedShippingAmount = $orderData->getShippingRefunded() ?
+        self::transformPrice($orderData->getShippingRefunded()) : 0;
         $shippingAmount = $orderData->getShippingInclTax() ? self::transformPrice($orderData->getShippingInclTax()) : 0;
         $totalShipmentCost = $shippingAmount - $refundedShippingAmount;
         $orderItemsTotal += $shippingAmount;
@@ -143,7 +154,8 @@ class TransformEntityService
             ]);
         }
 
-        $refundedDiscountAmount = $orderData->getDiscountRefunded() ? self::getTotalDiscountAmount($orderData, true) : 0;
+        $refundedDiscountAmount = $orderData->getDiscountRefunded() ?
+        self::getTotalDiscountAmount($orderData, true) : 0;
         $discountAmount = $orderData->getDiscountAmount() ? self::getTotalDiscountAmount($orderData) : 0;
         $totalDiscount = $discountAmount - $refundedDiscountAmount;
         $orderItemsTotal += $discountAmount;
@@ -174,6 +186,9 @@ class TransformEntityService
             $items[] = new HandlingItem('additional_handling', 'surcharge', $diff);
         }
 
+        /**
+         * @var float $cartTotal
+         */
         $cartTotal = array_reduce($items, static function ($sum, $item) {
             return $sum + $item->getTotalWithTax();
         }, 0);
@@ -185,6 +200,9 @@ class TransformEntityService
         return $items;
     }
 
+    // TODO: Static method cannot be intercepted and its use is discouraged.
+    // phpcs:disable Magento2.Functions.StaticFunction.StaticFunction
+    
     /**
      * Transform price to format.
      *
@@ -218,7 +236,7 @@ class TransformEntityService
                 $discount *= (1 + $item->getTaxPercent() / 100);
             }
 
-            $totalDiscount += self::transformPrice($discount);
+            $totalDiscount += self::transformPrice($discount ?? 0);
         }
 
         return -1 * $totalDiscount;
@@ -233,15 +251,16 @@ class TransformEntityService
      */
     private static function isTaxedAfterDiscount(MagentoOrder\Item $orderItem): bool
     {
-        if (
-            !$orderItem->getTaxAmount() || !$orderItem->getTaxPercent() ||
+        if (!$orderItem->getTaxAmount() || !$orderItem->getTaxPercent() ||
             self::transformPrice($orderItem->getTaxAmount()) === 0 ||
             self::transformPrice($orderItem->getTaxPercent()) === 0
         ) {
             return false;
         }
 
-        return self::transformPrice($orderItem->getRowTotalInclTax()) !== (self::transformPrice($orderItem->getTaxAmount()) * 100) / $orderItem->getTaxPercent();
+        $totalIncludingTax = self::transformPrice($orderItem->getRowTotalInclTax() ?? 0);
+        $taxAmount = self::transformPrice($orderItem->getTaxAmount());
+        return $totalIncludingTax !== ($taxAmount * 100) / $orderItem->getTaxPercent();
     }
 
     /**
@@ -254,9 +273,9 @@ class TransformEntityService
     private static function doesPriceIncludeTax(MagentoOrder $order): bool
     {
         return self::transformPrice($order->getGrandTotal()) -
-            self::transformPrice($order->getSubtotalInclTax()) -
-            self::transformPrice($order->getShippingInclTax()) -
-            self::transformPrice($order->getDiscountAmount()) === 0;
+            self::transformPrice($order->getSubtotalInclTax() ?? 0) -
+            self::transformPrice($order->getShippingInclTax() ?? 0) -
+            self::transformPrice($order->getDiscountAmount() ?? 0) === 0;
     }
 
     /**
@@ -272,4 +291,6 @@ class TransformEntityService
             return $item->getType() === ItemType::TYPE_PRODUCT;
         }));
     }
+
+    // phpcs:enable Magento2.Functions.StaticFunction.StaticFunction
 }

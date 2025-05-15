@@ -5,38 +5,34 @@ namespace Sequra\Core\Model\Api\CartProvider;
 use Magento\Quote\Api\CartRepositoryInterface;
 use Magento\Quote\Model\Quote;
 
-/**
- * Class CustomerCartProvider
- *
- * @package Sequra\Core\Model\Api\CartProvider
- */
 class CustomerCartProvider implements CartProvider
 {
     /**
      * @var CartRepositoryInterface
      */
-    private $quoteResotory;
+    private $quoteRepository;
 
     /**
      * CustomerCartProvider constructor.
      *
-     * @param CartRepositoryInterface $quoteResotory
+     * @param CartRepositoryInterface $quoteRepository
      */
-    public function __construct(CartRepositoryInterface $quoteResotory)
+    public function __construct(CartRepositoryInterface $quoteRepository)
     {
-        $this->quoteResotory = $quoteResotory;
+        $this->quoteRepository = $quoteRepository;
     }
 
+    /**
+     * Gets the quote for a customer cart
+     *
+     * @param string $cartId Customer cart ID
+     *
+     * @return Quote Quote instance
+     */
     public function getQuote(string $cartId): Quote
     {
         /** @var Quote $quote */
-        $quote = $this->quoteResotory->getActive($cartId);
-
-        if ($quote->getCheckoutMethod()) {
-            $quote->setCheckoutMethod('');
-            $quote->setCustomerIsGuest(false);
-            $this->quoteResotory->save($quote);
-        }
+        $quote = $this->quoteRepository->getActive((int) $cartId);
 
         return $quote;
     }

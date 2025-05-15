@@ -15,24 +15,15 @@ use SeQura\Core\BusinessLogic\Domain\Order\Models\OrderUpdateData;
 use SeQura\Core\BusinessLogic\Domain\Order\Service\OrderService;
 use SeQura\Core\Infrastructure\Logger\Logger;
 use SeQura\Core\Infrastructure\ServiceRegister;
+use Sequra\Core\Model\Ui\ConfigProvider;
 use Sequra\Core\Services\BusinessLogic\Utility\SeQuraTranslationProvider;
 
-/**
- * Class OrderCancellationObserver
- *
- * @package Sequra\Core\Observer
- */
 class OrderCancellationObserver implements ObserverInterface
 {
     /**
      * @var SeQuraTranslationProvider
      */
     private $translationProvider;
-
-    /**
-     * @var OrderService
-     */
-    private $orderService;
 
     /**
      * @param SeQuraTranslationProvider $translationProvider
@@ -50,7 +41,9 @@ class OrderCancellationObserver implements ObserverInterface
     public function execute(Observer $observer): void
     {
         $orderData = $observer->getData('order');
-        if (WebhookController::isWebhookProcessing() || $orderData->getStatus() !== Order::STATE_CANCELED) {
+        if (WebhookController::isWebhookProcessing() || ! $orderData instanceof MagentoOrder ||
+            $orderData->getStatus() !== Order::STATE_CANCELED ||
+            $orderData->getPayment()->getMethod() !== ConfigProvider::CODE) {
             return;
         }
 
@@ -77,28 +70,22 @@ class OrderCancellationObserver implements ObserverInterface
             throw new LocalizedException($this->translationProvider->translate('sequra.error.cannotCancel'));
         }
 
-        StoreContext::doWithStore($orderData->getStoreId(), [$this->getOrderService(), 'updateOrder'], [
+        /**
+         * @var OrderService $orderService
+         */
+        $orderService = StoreContext::doWithStore($orderData->getStoreId(), function () {
+            return ServiceRegister::getService(OrderService::class);
+        });
+
+        StoreContext::doWithStore($orderData->getStoreId(), [$orderService, 'updateOrder'], [
             new OrderUpdateData(
                 $orderData->getIncrementId(),
                 new SeQuraCart($orderData->getOrderCurrencyCode()),
                 new SeQuraCart($orderData->getOrderCurrencyCode()),
-                null, null
+                null,
+                null
             )
         ]);
-    }
-
-    /**
-     * Returns an instance of Order service.
-     *
-     * @return OrderService
-     */
-    private function getOrderService(): OrderService
-    {
-        if (!isset($this->orderService)) {
-            $this->orderService = ServiceRegister::getService(OrderService::class);
-        }
-
-        return $this->orderService;
     }
 
     /**

@@ -14,14 +14,10 @@ use SeQura\Core\BusinessLogic\Domain\Order\Service\OrderService;
 use Sequra\Core\Controller\Webhook\Index as WebhookController;
 use SeQura\Core\Infrastructure\Logger\Logger;
 use SeQura\Core\Infrastructure\ServiceRegister;
+use Sequra\Core\Model\Ui\ConfigProvider;
 use Sequra\Core\Services\BusinessLogic\Utility\SeQuraTranslationProvider;
 use Sequra\Core\Services\BusinessLogic\Utility\TransformEntityService;
 
-/**
- * Class OrderAddressObserver
- *
- * @package Sequra\Core\Observer
- */
 class OrderAddressObserver implements ObserverInterface
 {
     /**
@@ -35,16 +31,15 @@ class OrderAddressObserver implements ObserverInterface
     private $transformService;
 
     /**
-     * @var OrderService
-     */
-    private $orderService;
-
-    /**
+     * Constructor
+     *
      * @param SeQuraTranslationProvider $translationProvider
      * @param TransformEntityService $transformService
      */
-    public function __construct(SeQuraTranslationProvider $translationProvider, TransformEntityService $transformService)
-    {
+    public function __construct(
+        SeQuraTranslationProvider $translationProvider,
+        TransformEntityService $transformService
+    ) {
         $this->translationProvider = $translationProvider;
         $this->transformService = $transformService;
     }
@@ -60,6 +55,9 @@ class OrderAddressObserver implements ObserverInterface
             return;
         }
 
+        /**
+         * @var MagentoAddress $addressData
+         */
         $addressData = $observer->getData('data_object');
 
         try {
@@ -81,6 +79,12 @@ class OrderAddressObserver implements ObserverInterface
     private function handleAddressUpdate(MagentoAddress $magentoAddress): void
     {
         $magentoOrder = $magentoAddress->getOrder();
+        $payment = $magentoOrder->getPayment();
+
+        if (!$payment || $payment->getMethod() !== ConfigProvider::CODE) {
+            return;
+        }
+
         if ($magentoOrder->getStatus() === Order::STATE_PAYMENT_REVIEW) {
             throw new LocalizedException($this->translationProvider->translate('sequra.error.cannotUpdate'));
         }
@@ -88,27 +92,22 @@ class OrderAddressObserver implements ObserverInterface
         $isShippingAddress = $magentoAddress->getAddressType() === 'shipping';
         $address = $this->transformService->transformAddressToSeQuraOrderAddress($magentoAddress);
 
-        StoreContext::doWithStore($magentoOrder->getStoreId(), [$this->getOrderService(), 'updateOrder'], [
+        /**
+         * @var OrderService $orderService
+         */
+        $orderService = StoreContext::doWithStore((string) $magentoOrder->getStoreId(), function () {
+            return ServiceRegister::getService(OrderService::class);
+        });
+
+        StoreContext::doWithStore((string) $magentoOrder->getStoreId(), [$orderService, 'updateOrder'], [
             new OrderUpdateData(
-                $magentoOrder->getIncrementId(), null, null,
+                $magentoOrder->getIncrementId(),
+                null,
+                null,
                 $isShippingAddress ? $address : null,
                 !$isShippingAddress ? $address : null
             )
         ]);
-    }
-
-    /**
-     * Returns an instance of Order service.
-     *
-     * @return OrderService
-     */
-    private function getOrderService(): OrderService
-    {
-        if (!isset($this->orderService)) {
-            $this->orderService = ServiceRegister::getService(OrderService::class);
-        }
-
-        return $this->orderService;
     }
 
     /**

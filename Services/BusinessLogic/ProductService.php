@@ -7,46 +7,35 @@ use Magento\Catalog\Model\ResourceModel\Category\Tree;
 use Magento\Framework\Exception\NoSuchEntityException;
 use SeQura\Core\BusinessLogic\Domain\Multistore\StoreContext;
 
-/**
- * Class ProductService
- *
- * @package Sequra\Core\Services\BusinessLogic
- */
 class ProductService
 {
-    /**
-     * @var Tree
-     */
-    private $categoryTree;
     /**
      * @var CategoryRepositoryInterface
      */
     private $categoryRepository;
     /**
-     * @var array
+     * @var array<string, array<string>>
      */
     private $resolvedCategories = [];
 
     /**
-     * @param Tree $categoryTree
      * @param CategoryRepositoryInterface $categoryRepository
      */
-    public function __construct(
-        Tree $categoryTree,
-        CategoryRepositoryInterface $categoryRepository
-    ) {
-        $this->categoryTree = $categoryTree;
+    public function __construct(CategoryRepositoryInterface $categoryRepository)
+    {
         $this->categoryRepository = $categoryRepository;
     }
 
     /**
-     * @param array $categoryIds
+     * Get all product categories
      *
-     * @return array
+     * @param array<string> $categoryIds
+     *
+     * @return array<string>
      *
      * @throws NoSuchEntityException
      */
-    public function getAllProductCategories(array $categoryIds): array
+    public function getAllProductCategoryIds(array $categoryIds): array
     {
         if (!$categoryIds) {
             return [];
@@ -58,13 +47,15 @@ class ProductService
             $trails[] = $this->getTrail($categoryId);
         }
 
-        return array_merge(...$trails);
+        return array_unique(array_merge(...$trails));
     }
 
     /**
+     * Get trail of categories for a given category ID
+     *
      * @param string $categoryId
      *
-     * @return array
+     * @return array<string>
      *
      * @throws NoSuchEntityException
      */
@@ -74,17 +65,13 @@ class ProductService
             return $this->resolvedCategories[$categoryId];
         }
 
-        $storeId = StoreContext::getInstance()->getStoreId();
-        $category = $this->categoryRepository->get($categoryId, $storeId);
-        $categoryTree = $this->categoryTree->setStoreId($storeId)->loadBreadcrumbsArray($category->getPath());
-
-        $categoryTrailArray = [];
-        foreach ($categoryTree as $eachCategory) {
-            $categoryTrailArray[] = $eachCategory['entity_id'];
+        $storeId = (int) StoreContext::getInstance()->getStoreId();
+        $category = $this->categoryRepository->get((int) $categoryId, $storeId);
+        $categories = explode('/', $category->getPath() ?? '');
+        if (count($categories) < 2) {
+            return [];
         }
-
-        $this->resolvedCategories[$categoryId] = $categoryTrailArray;
-
-        return $categoryTrailArray;
+        unset($categories[0]);
+        return $categories;
     }
 }

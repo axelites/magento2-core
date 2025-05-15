@@ -43,8 +43,14 @@ class Initializer implements SchemaPatchInterface
     public function apply()
     {
         $this->removeObsoleteColumns();
+        return $this;
     }
 
+    /**
+     * Removes obsolete columns from database tables
+     *
+     * @return void
+     */
     private function removeObsoleteColumns()
     {
         $this->databaseHandler->removeColumn('sales_order', 'sequra_order_send');

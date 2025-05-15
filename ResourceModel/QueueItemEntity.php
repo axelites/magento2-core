@@ -10,11 +10,6 @@ use SeQura\Core\Infrastructure\ORM\Utility\IndexHelper;
 use SeQura\Core\Infrastructure\TaskExecution\Exceptions\QueueItemSaveException;
 use SeQura\Core\Infrastructure\TaskExecution\QueueItem;
 
-/**
- * Class QueueItemEntity
- *
- * @package Sequra\Core\ResourceModel
- */
 class QueueItemEntity extends SequraEntity
 {
     /**
@@ -43,7 +38,7 @@ class QueueItemEntity extends SequraEntity
      *
      * @param Entity $entity Sequra entity.
      *
-     * @return array Names of queues containing items that are currently in progress.
+     * @return array<string> Names of queues containing items that are currently in progress.
      *
      * @throws \Magento\Framework\Exception\LocalizedException
      * @throws \SeQura\Core\Infrastructure\ORM\Exceptions\QueryFilterInvalidParamException
@@ -60,6 +55,8 @@ class QueueItemEntity extends SequraEntity
 
         return array_map(
             static function ($runningQueueItem) use ($queueNameIndex) {
+                // TODO: Cannot access offset non-falsy-string on SeQura\Core\Infrastructure\TaskExecution\QueueItem
+                // @phpstan-ignore-next-line
                 return $runningQueueItem[$queueNameIndex];
             },
             $runningQueueItems
@@ -69,18 +66,25 @@ class QueueItemEntity extends SequraEntity
     /**
      * Returns all queued items.
      *
-     * @param array $runningQueueNames Array of queues containing items that are currently in progress.
+     * @param array<string> $runningQueueNames Array of queues containing items that are currently in progress.
      * @param int $priority Queue item priority.
      * @param int $limit Maximum number of records that can be retrieved.
      *
-     * @return array Array of queued items.
+     * @return QueueItem[] Array of queued items.
      *
      * @throws \Magento\Framework\Exception\LocalizedException
      */
     private function getQueuedItems(array $runningQueueNames, $priority, $limit)
     {
-        $queueNameIndex = $this->getIndexMapping('queueName', QueueItem::getClassName());
+        $connection = $this->getConnection();
+        if (!$connection) {
+            return [];
+        }
 
+        $queueNameIndex = $this->getIndexMapping('queueName', QueueItem::getClassName());
+        /**
+         * @var int $castedPriorityValue
+         */
         $castedPriorityValue = IndexHelper::castFieldValue($priority, 'integer');
         $condition = $this->buildWhereString(
             [
@@ -92,15 +96,16 @@ class QueueItemEntity extends SequraEntity
 
         if (!empty($runningQueueNames)) {
             $quotedNames = array_map(
-                function ($name) {
-                    return $this->getConnection()->quote($name);
+                function ($name) use ($connection) {
+                    return $connection->quote($name);
                 },
                 $runningQueueNames
             );
-
             $condition .= sprintf(' AND ' . $queueNameIndex . ' NOT IN (%s)', implode(', ', $quotedNames));
         }
 
+        // TODO: Possible raw SQL statement detected
+        // phpcs:disable Magento2.SQL.RawQuery.FoundRawSql
         $query = 'SELECT queueTable.id, queueTable.index_1, queueTable.index_7, queueTable.data '
             . 'FROM ( '
             . 'SELECT ' . $queueNameIndex . ', MIN(id) AS id '
@@ -111,8 +116,9 @@ class QueueItemEntity extends SequraEntity
             . ' ) AS queueView '
             . 'INNER JOIN ' . $this->getMainTable() . ' AS queueTable '
             . 'ON queueView.id = queueTable.id';
+        // phpcs:enable
 
-        $records = $this->getConnection()->fetchAll($query);
+        $records = $connection->fetchAll($query);
 
         return \is_array($records) ? $records : [];
     }
@@ -121,28 +127,35 @@ class QueueItemEntity extends SequraEntity
      * Builds where condition string based on given key/value parameters.
      *
      * @param array $whereFields Key value pairs of where condition
+     * @phpstan-param array<string, int|string|null> $whereFields
      *
      * @return string Properly sanitized where condition string
      */
     private function buildWhereString(array $whereFields = [])
     {
+        $connection = $this->getConnection();
+        if (!$connection) {
+            return '';
+        }
         $where = [];
         foreach ($whereFields as $field => $value) {
-            $where[] = $field . Operators::EQUALS . $this->getConnection()->quote($value);
+            $where[] = $field . Operators::EQUALS . $connection->quote($value);
         }
 
         return implode(' AND ', $where);
     }
 
     /**
-     * Creates or updates given queue item. If queue item id is not set, new queue item will be created otherwise
-     * update will be performed.
+     * Creates or updates given queue item.
+     *
+     * If queue item id is not set, new queue item will be created otherwise update will be performed.
      *
      * @param QueueItem $queueItem Item to save
      * @param array $additionalWhere List of key/value pairs that must be satisfied upon saving queue item. Key is
      *  queue item property and value is condition value for that property. Example for MySql storage:
      *  $storage->save($queueItem, array('status' => 'queued')) should produce query
      *  UPDATE queue_storage_table SET .... WHERE .... AND status => 'queued'
+     * @phpstan-param array<string, mixed> $additionalWhere
      *
      * @return int Id of saved queue item
      *
@@ -169,7 +182,7 @@ class QueueItemEntity extends SequraEntity
     /**
      * Updates status of a batch of queue items.
      *
-     * @param array $ids
+     * @param array<int> $ids
      * @param string $status
      *
      * @return void
@@ -178,6 +191,9 @@ class QueueItemEntity extends SequraEntity
     public function batchStatusUpdate(array $ids, string $status)
     {
         $connection = $this->getConnection();
+        if (!$connection) {
+            return;
+        }
 
         $lastUpdateTime = IndexHelper::castFieldValue(time(), 'integer');
         $data = [
@@ -194,6 +210,9 @@ class QueueItemEntity extends SequraEntity
      *
      * @param QueueItem $queueItem Queue item entity.
      * @param array $additionalWhere Array of additional where conditions.
+     * @phpstan-param array<string, mixed> $additionalWhere
+     *
+     * @return void
      *
      * @throws QueueItemSaveException
      * @throws \Magento\Framework\Exception\LocalizedException

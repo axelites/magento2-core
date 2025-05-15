@@ -283,7 +283,7 @@ SequraFE.appPages = {
             let config = utilities.cloneObject(configuration.pageConfiguration[controllerName] || {});
             Object.keys(config).forEach((key) => {
                 config[key] = config[key].replace(encodeURIComponent('{storeId}'), this.getStoreId);
-            })
+            });
 
             page && (config.page = page);
 
@@ -305,6 +305,16 @@ SequraFE.appPages = {
          * @returns {string}
          */
         this.getPage = () => {
+            if (window.location.hash) {
+                let page = window.location.hash.substring(1);
+                if (page) {
+                    page = page.split('-')[1];
+                    if (page) {
+                        setPage(page);
+                        return page;
+                    }
+                }
+            }
             return localStorage.getItem('sq-page');
         }
 

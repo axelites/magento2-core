@@ -8,11 +8,6 @@ use Magento\Framework\Controller\Result\JsonFactory;
 use SeQura\Core\BusinessLogic\AdminAPI\AdminAPI;
 use SeQura\Core\BusinessLogic\AdminAPI\CountryConfiguration\Requests\CountryConfigurationRequest;
 
-/**
- * Class CountrySettings
- *
- * @package Sequra\Core\Controller\Adminhtml\Configuration
- */
 class CountrySettings extends BaseConfigurationController
 {
     /**
@@ -35,6 +30,7 @@ class CountrySettings extends BaseConfigurationController
      */
     protected function getSellingCountries(): Json
     {
+        // @phpstan-ignore-next-line
         $data = AdminAPI::get()->countryConfiguration($this->storeId)->getSellingCountries();
         $this->addResponseCode($data);
 
@@ -48,6 +44,7 @@ class CountrySettings extends BaseConfigurationController
      */
     protected function getCountrySettings(): Json
     {
+        // @phpstan-ignore-next-line
         $data = AdminAPI::get()->countryConfiguration($this->storeId)->getCountryConfigurations();
         $this->addResponseCode($data);
 
@@ -61,8 +58,13 @@ class CountrySettings extends BaseConfigurationController
      */
     protected function setCountrySettings(): Json
     {
+        /**
+         * @var array<int, array<string, string>>
+         */
+        $data = $this->getSequraPostData();
+        // @phpstan-ignore-next-line
         $response = AdminAPI::get()->countryConfiguration($this->storeId)->saveCountryConfigurations(
-            new CountryConfigurationRequest($this->getSequraPostData())
+            new CountryConfigurationRequest($data)
         );
 
         $this->addResponseCode($response);

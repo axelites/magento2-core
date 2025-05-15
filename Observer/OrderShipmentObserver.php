@@ -13,6 +13,7 @@ use SeQura\Core\BusinessLogic\Domain\Order\Models\OrderUpdateData;
 use SeQura\Core\BusinessLogic\Domain\Order\Service\OrderService;
 use SeQura\Core\Infrastructure\Logger\Logger;
 use SeQura\Core\Infrastructure\ServiceRegister;
+use Sequra\Core\Model\Ui\ConfigProvider;
 use Sequra\Core\Services\BusinessLogic\Utility\SeQuraTranslationProvider;
 use Sequra\Core\Services\BusinessLogic\Utility\TransformEntityService;
 
@@ -34,11 +35,6 @@ class OrderShipmentObserver implements ObserverInterface
     private $transformService;
 
     /**
-     * @var OrderService
-     */
-    private $orderService;
-
-    /**
      * @param SeQuraTranslationProvider $translationProvider
      * @param TransformEntityService $transformService
      */
@@ -55,6 +51,9 @@ class OrderShipmentObserver implements ObserverInterface
      */
     public function execute(Observer $observer): void
     {
+        /**
+         * @var MagentoShipment $shipmentData
+         */
         $shipmentData = $observer->getData('data_object');
 
         try {
@@ -76,6 +75,11 @@ class OrderShipmentObserver implements ObserverInterface
     private function handleShipment(MagentoShipment $shipmentData): void
     {
         $orderData = $shipmentData->getOrder();
+        $payment = $orderData->getPayment();
+
+        if (!$payment || $payment->getMethod() !== ConfigProvider::CODE) {
+            return;
+        }
 
         if ($orderData->getStatus() === Order::STATE_PAYMENT_REVIEW) {
             throw new LocalizedException($this->translationProvider->translate('sequra.error.cannotShip'));
@@ -84,7 +88,15 @@ class OrderShipmentObserver implements ObserverInterface
         $unshippedCart = $this->transformService->transformOrderCartToSeQuraCart($orderData, false);
         $shippedCart = $this->transformService->transformOrderCartToSeQuraCart($orderData, true);
 
-        StoreContext::doWithStore($orderData->getStoreId(), [$this->getOrderService(), 'updateOrder'], [
+        $storeId = (string) $orderData->getStoreId();
+        /**
+         * @var OrderService $orderService
+         */
+        $orderService = StoreContext::doWithStore($storeId, function () {
+            return ServiceRegister::getService(OrderService::class);
+        });
+
+        StoreContext::doWithStore($storeId, [$orderService, 'updateOrder'], [
             new OrderUpdateData(
                 $orderData->getIncrementId(),
                 $shippedCart,
@@ -93,20 +105,6 @@ class OrderShipmentObserver implements ObserverInterface
                 null
             )
         ]);
-    }
-
-    /**
-     * Returns an instance of Order service.
-     *
-     * @return OrderService
-     */
-    private function getOrderService(): OrderService
-    {
-        if (!isset($this->orderService)) {
-            $this->orderService = ServiceRegister::getService(OrderService::class);
-        }
-
-        return $this->orderService;
     }
 
     /**

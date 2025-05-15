@@ -22,33 +22,50 @@ class Fieldset extends MagentoFieldset
      * @param Context $context
      * @param Session $authSession
      * @param Js $jsHelper
-     * @param array $data
+     * @param mixed[] $data
      * @param SecureHtmlRenderer|null $secureRenderer
      */
-    public function __construct(SeQuraTranslationProvider $translationProvider,
-                                Context                   $context,
-                                Session                   $authSession,
-                                Js                        $jsHelper,
-                                array                     $data = [],
-                                ?SecureHtmlRenderer       $secureRenderer = null)
-    {
+    public function __construct(
+        SeQuraTranslationProvider $translationProvider,
+        Context                   $context,
+        Session                   $authSession,
+        Js                        $jsHelper,
+        array                     $data = [],
+        ?SecureHtmlRenderer       $secureRenderer = null
+    ) {
         parent::__construct($context, $authSession, $jsHelper, $data, $secureRenderer);
         $this->translationProvider = $translationProvider;
     }
 
+    /**
+     * Get frontend class for fieldset
+     *
+     * @param \Magento\Framework\Data\Form\Element\AbstractElement $element
+     *
+     * @return string
+     */
     protected function _getFrontendClass($element)
     {
         return parent::_getFrontendClass($element) . ' with-button enabled';
     }
 
+    /**
+     * Get header title html
+     *
+     * @param \Magento\Framework\Data\Form\Element\AbstractElement $element
+     *
+     * @return string
+     */
     protected function _getHeaderTitleHtml($element)
     {
         $html = '<div class="config-heading" >';
 
         $html .= '<div class="button-container">' . $this->getConfigButtonElementHtml() . '</div>';
-        $html .= '<div class="heading"><strong>' . $element->getLegend() . '</strong>';
+        if (method_exists($element, 'getLegend')) {
+            $html .= '<div class="heading"><strong>' . $element->getLegend() . '</strong>';
+        }
 
-        if ($element->getComment()) {
+        if (method_exists($element, 'getComment') && $element->getComment()) {
             $html .= '<span class="heading-intro">' . $element->getComment() . '</span>';
         }
         $html .= '<div class="config-alt"></div>';
@@ -58,6 +75,8 @@ class Fieldset extends MagentoFieldset
     }
 
     /**
+     * Get config button element html
+     *
      * @return string
      */
     public function getConfigButtonElementHtml()
@@ -81,6 +100,7 @@ class Fieldset extends MagentoFieldset
      * Get collapsed state on-load
      *
      * @param \Magento\Framework\Data\Form\Element\AbstractElement $element
+     *
      * @return false
      * @SuppressWarnings(PHPMD.UnusedFormalParameter)
      */

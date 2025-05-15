@@ -6,47 +6,56 @@ use Magento\Framework\View\Asset\Repository;
 use Magento\Ui\Component\Listing\Columns\Column;
 use Magento\Framework\View\Element\UiComponent\ContextInterface;
 use Magento\Framework\View\Element\UiComponentFactory;
-use Magento\Framework\UrlInterface;
 use SeQura\Core\BusinessLogic\Domain\Order\Models\OrderRequest\OrderRequestStates;
 use SeQura\Core\BusinessLogic\Domain\Order\Models\SeQuraOrder;
 use SeQura\Core\BusinessLogic\Domain\Order\Service\OrderService;
 use SeQura\Core\Infrastructure\ServiceRegister;
 use Sequra\Core\Services\BusinessLogic\Utility\SeQuraTranslationProvider;
+use Sequra\Core\Helper\UrlHelper;
 
-/**
- * Class SequraOrderLink
- *
- * @package Sequra\Core\Ui\Component\Listing\Column
- */
 class SequraOrderLink extends Column
 {
-    protected $assetRepository;
-    protected $urlBuilder;
-    protected $translationProvider;
-    public const SEQURA_PORTAL_URL = 'https://simbox.sequrapi.com/orders/';
+    /**
+     * @var Repository
+     */
+    private $assetRepository;
+    /**
+     * @var SeQuraTranslationProvider
+     */
+    private $translationProvider;
+    /**
+     * @var UrlHelper
+     */
+    private $urlHelper;
+
+    /**
+     * @var OrderService|null
+     */
+    private $orderService;
 
     /**
      * @param ContextInterface $context
      * @param UiComponentFactory $uiComponentFactory
      * @param Repository $assetRepository
-     * @param UrlInterface $urlBuilder
      * @param SeQuraTranslationProvider $translationProvider
+     * @param UrlHelper $urlHelper
      * @param array $components
      * @param array $data
+     * @phpstan-param array<string, mixed> $components
+     * @phpstan-param array<string, mixed> $data
      */
     public function __construct(
         ContextInterface          $context,
         UiComponentFactory        $uiComponentFactory,
         Repository                $assetRepository,
-        UrlInterface              $urlBuilder,
         SeQuraTranslationProvider $translationProvider,
+        UrlHelper                 $urlHelper,
         array                     $components = [],
         array                     $data = []
-    )
-    {
+    ) {
         $this->assetRepository = $assetRepository;
-        $this->urlBuilder = $urlBuilder;
         $this->translationProvider = $translationProvider;
+        $this->urlHelper = $urlHelper;
         parent::__construct($context, $uiComponentFactory, $components, $data);
     }
 
@@ -54,8 +63,10 @@ class SequraOrderLink extends Column
      * Fills in data in the orders sequra columns.
      *
      * @param array $dataSource
+     * @phpstan-param array<string, array<string, array<string, string>>> $dataSource
      *
      * @return array
+     * @phpstan-return array<string, mixed>
      */
     public function prepareDataSource(array $dataSource): array
     {
@@ -79,7 +90,9 @@ class SequraOrderLink extends Column
             if (isset($item['entity_id'], $referenceMap[$item['increment_id']])) {
                 $orderInfo = $referenceMap[$item['increment_id']];
                 $item[$this->getData('name') . '_reference'] = $orderInfo['ref'];
-                $orderInfo['isApproved'] && $item[$this->getData('name')] = $this->getButtonLink($orderInfo['ref']);
+                $orderInfo['isApproved'] && $item[$this->getData('name')] = $this->getButtonLink(
+                    $this->urlHelper->getBackendUrlForSequraOrder($orderInfo['ref'])
+                );
             }
         }
 
@@ -91,6 +104,7 @@ class SequraOrderLink extends Column
      *
      * @param SeQuraOrder[] $orders
      * @return array
+     * @phpstan-return array<string, array{ref: string, isApproved: bool}>
      */
     private function createReferenceMap(array $orders): array
     {
@@ -108,21 +122,24 @@ class SequraOrderLink extends Column
     /**
      * Generates a button link html for a provided order reference.
      *
-     * @param string $orderReference
+     * @param string $url
      *
      * @return string
      */
-    private function getButtonLink(string $orderReference): string
+    private function getButtonLink(string $url): string
     {
         $imagePath = $this->assetRepository->getUrl('Sequra_Core::images/sequra-logo.png');
 
+        // TODO: Use an alternative to html_entity_decode
+        // phpcs:ignore Magento2.Functions.DiscouragedFunction.Discouraged
         return html_entity_decode(
-            '<a class="sequra-link" href="' . $this->urlBuilder->getUrl(self::SEQURA_PORTAL_URL . $orderReference) . '" target="_blank" onclick="event.stopPropagation()">
+            '<a class="sequra-link" href="' . $url . '" target="_blank" onclick="event.stopPropagation()">
                         <button class="sequra-preview">
                             <img class="sequra-logo" src=' . $imagePath . ' alt="sequra-logo">
                                 ' . $this->translationProvider->translate("sequra.viewOnSequra") . '
                         </button>
-                   </a>');
+                   </a>'
+        );
     }
 
     /**

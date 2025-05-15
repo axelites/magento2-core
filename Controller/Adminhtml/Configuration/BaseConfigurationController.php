@@ -11,17 +11,12 @@ use Magento\Framework\Controller\ResultInterface;
 use Magento\Framework\Webapi\Exception;
 use SeQura\Core\BusinessLogic\AdminAPI\Response\Response;
 
-/**
- * Class BaseConfigurationController
- *
- * @package Sequra\Core\Controller\Adminhtml\Configuration
- */
 class BaseConfigurationController extends Action
 {
     /**
      * Actions that are being handled by controllers.
      *
-     * @var array
+     * @var string[]
      */
     protected $allowedActions = [];
     /**
@@ -65,24 +60,34 @@ class BaseConfigurationController extends Action
     public function execute()
     {
         $request = $this->getRequest();
-
-        if (!$request->getParam('action')
-            || !method_exists($this, $request->getParam('action'))
-            || !in_array($request->getParam('action'), $this->allowedActions, true)
-        ) {
+        /**
+         * @var string $action
+         */
+        $action = $request->getParam('action');
+        if (!$action || !method_exists($this, $action) || !in_array($action, $this->allowedActions, true)) {
             $this->result->setHttpResponseCode(Exception::HTTP_BAD_REQUEST);
 
             return $this->result->setData(
                 [
                     'success' => false,
+                    // TODO: The use of function _() is discouraged; use AdapterInterface::translate() instead
+                    // phpcs:ignore Magento2.Functions.DiscouragedFunction.DiscouragedWithAlternative
                     'message' => _('Wrong action requested.'),
                 ]
             );
         }
 
-        $this->storeId = $request->getParam('storeId');
-        $this->identifier = $request->getParam('identifier');
-        $action = $request->getParam('action');
+        /**
+         * @var string $storeId
+         */
+        $storeId = $request->getParam('storeId');
+        $this->storeId = $storeId;
+
+        /**
+         * @var string $identifier
+         */
+        $identifier = $request->getParam('identifier');
+        $this->identifier = $identifier;
 
         return $this->$action();
     }
@@ -90,11 +95,14 @@ class BaseConfigurationController extends Action
     /**
      * Returns post data from Sequra request.
      *
-     * @return array
+     * @return mixed[]
      */
     protected function getSequraPostData(): array
     {
-        return json_decode(file_get_contents('php://input'), true);
+        // TODO: The use of function file_get_contents() is discouraged
+        // phpcs:ignore Magento2.Functions.DiscouragedFunction.Discouraged
+        $json = json_decode((string) file_get_contents('php://input'), true);
+        return is_array($json) ? $json : [];
     }
 
     /**
@@ -106,6 +114,11 @@ class BaseConfigurationController extends Action
      */
     protected function addResponseCode(Response $response): void
     {
-        $this->result->setHttpResponseCode($response->isSuccessful() ? 200 : $response->toArray()['statusCode']);
+        $statusCode = 200;
+        if (!$response->isSuccessful()) {
+            $arr = $response->toArray();
+            $statusCode = isset($arr['statusCode']) && is_numeric($arr['statusCode']) ? (int) $arr['statusCode'] : 500;
+        }
+        $this->result->setHttpResponseCode($statusCode);
     }
 }

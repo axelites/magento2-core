@@ -11,11 +11,6 @@ use SeQura\Core\BusinessLogic\Domain\GeneralSettings\Services\GeneralSettingsSer
 use SeQura\Core\BusinessLogic\Domain\Multistore\StoreContext;
 use SeQura\Core\Infrastructure\ServiceRegister;
 
-/**
- * Class Configurable
- *
- * @package Sequra\Core\Plugin\Magento\ConfigurableProduct\Block\Product\View\Type
- */
 class Configurable
 {
     /**
@@ -32,8 +27,10 @@ class Configurable
     }
 
     /**
+     * Encodes the JSON configuration for the configurable product
+     *
      * @param ConfigurableProduct $subject
-     * @param $result
+     * @param string $result
      *
      * @return string
      *
@@ -43,11 +40,17 @@ class Configurable
     public function afterGetJsonConfig(ConfigurableProduct $subject, $result): string
     {
         $store = $this->storeManager->getStore();
-        $generalSettings = StoreContext::doWithStore($store->getId(), function () {
+        /**
+         * @var GeneralSettings|null $generalSettings
+         */
+        $generalSettings = StoreContext::doWithStore((string) $store->getId(), function () {
             return $this->getGeneralSettings();
         });
 
         $jsonResult = json_decode($result, true);
+        if (!is_array($jsonResult)) {
+            $jsonResult = [];
+        }
         $jsonResult['skus'] = [];
         $jsonResult['excludedProducts'] = [];
 
@@ -59,10 +62,12 @@ class Configurable
             $jsonResult['skus'][$simpleProduct->getId()] = $simpleProduct->getSku();
         }
 
-        return json_encode($jsonResult);
+        return (string) json_encode($jsonResult);
     }
 
     /**
+     * Get the general settings
+     *
      * @return GeneralSettings|null
      */
     private function getGeneralSettings(): ?GeneralSettings

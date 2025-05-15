@@ -9,21 +9,29 @@ use Magento\Framework\Module\ModuleList;
 use SeQura\Core\BusinessLogic\Domain\Integration\Version\VersionServiceInterface;
 use SeQura\Core\BusinessLogic\Domain\Version\Models\Version;
 
-/**
- * Class VersionService
- *
- * @package Sequra\Core\Services\BusinessLogic
- */
 class VersionService implements VersionServiceInterface
 {
-    private const SEQURA_MAGENTO_REPOSITORY_URL = 'https://repo.packagist.org/p/sequra/magento2-core.json';
+    private const SEQURA_MAGENTO_REPOSITORY_URL = 'https://repo.packagist.org/p2/sequra/magento2-core.json';
     private const SEQURA_MAGENTO_DOWNLOAD_URL = 'https://github.com/sequra/magento2-core/releases';
 
+    /**
+     * @var ModuleList
+     */
     private $moduleList;
+
+    /**
+     * @var Client
+     */
     private $client;
+
+    /**
+     * @var Uri
+     */
     private $hubUri;
 
     /**
+     * Constructor.
+     *
      * @param ModuleList $moduleList
      * @param Client $client
      */
@@ -72,24 +80,25 @@ class VersionService implements VersionServiceInterface
         }
 
         $hubResponse = json_decode($hubResponse->getBody()->getContents(), true);
-        $latestVersionInfo = $this->getLatestVersionFromInfoResponse($hubResponse);
 
-        return $latestVersionInfo['version'] ?? null;
+        return is_array($hubResponse) ? $this->getLatestVersionFromInfoResponse($hubResponse) : null;
     }
 
     /**
-     * Filters out non-version entities from the response.
+     * Filter latest tag version.
      *
      * @param array $response
+     * @phpstan-param array<string, array<string, array<string, string>>> $response
      *
-     * @return array
+     * @return null|string
      */
-    private function getLatestVersionFromInfoResponse(array $response): array
+    private function getLatestVersionFromInfoResponse(array $response): ?string
     {
-        $filteredArray = array_filter($response['packages']['sequra/magento2-core'], static function ($key) {
-            return strpos($key, 'dev') !== 0;
-        }, ARRAY_FILTER_USE_KEY);
-
-        return end($filteredArray);
+        if (!isset($response['packages']['sequra/magento2-core'])
+        || !is_array($response['packages']['sequra/magento2-core'])) {
+            return null;
+        }
+        $module = reset($response['packages']['sequra/magento2-core']);
+        return $module['version'] ?? null;
     }
 }

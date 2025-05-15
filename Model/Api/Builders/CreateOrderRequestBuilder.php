@@ -7,6 +7,7 @@ use Magento\Framework\App\DeploymentConfig;
 use Magento\Framework\App\ProductMetadataInterface;
 use Magento\Framework\Config\ConfigOptionsListConstants;
 use Magento\Framework\DB\Adapter\SqlVersionProvider;
+use Magento\Framework\Exception\NoSuchEntityException;
 use Magento\Framework\Module\ResourceInterface;
 use Magento\Framework\UrlInterface;
 use Magento\Quote\Api\CartRepositoryInterface;
@@ -18,18 +19,12 @@ use Magento\Store\Model\ScopeInterface;
 use Magento\Tax\Model\Config;
 use SeQura\Core\BusinessLogic\AdminAPI\AdminAPI;
 use SeQura\Core\BusinessLogic\AdminAPI\GeneralSettings\Responses\GeneralSettingsResponse;
-use SeQura\Core\BusinessLogic\Domain\Multistore\StoreContext;
 use SeQura\Core\BusinessLogic\Domain\Order\Models\OrderRequest\CreateOrderRequest;
 use SeQura\Core\BusinessLogic\Domain\Order\Models\OrderRequest\Item\ItemType;
-use SeQura\Core\BusinessLogic\Domain\UIState\Services\UIStateService;
-use SeQura\Core\Infrastructure\ServiceRegister;
+use SeQura\Core\Infrastructure\Logger\Logger;
 use Sequra\Core\Services\BusinessLogic\ProductService;
+use Throwable;
 
-/**
- * Class CreateOrderRequestBuilder
- *
- * @package Sequra\Core\Model\Api\Builders
- */
 class CreateOrderRequestBuilder implements \SeQura\Core\BusinessLogic\Domain\Order\Builders\CreateOrderRequestBuilder
 {
     /**
@@ -81,20 +76,34 @@ class CreateOrderRequestBuilder implements \SeQura\Core\BusinessLogic\Domain\Ord
      */
     private $orderFactory;
 
+    /**
+     * Constructor for CreateOrderRequestBuilder
+     *
+     * @param CartRepositoryInterface $quoteRepository
+     * @param ProductMetadataInterface $productMetadata
+     * @param ResourceInterface $moduleResource
+     * @param DeploymentConfig $deploymentConfig
+     * @param SqlVersionProvider $sqlVersionProvider
+     * @param ScopeConfigInterface $scopeConfig
+     * @param UrlInterface $urlBuilder
+     * @param string $cartId
+     * @param string $storeId
+     * @param ProductService $productService
+     * @param OrderFactory $orderFactory
+     */
     public function __construct(
-        CartRepositoryInterface  $quoteRepository,
+        CartRepositoryInterface $quoteRepository,
         ProductMetadataInterface $productMetadata,
-        ResourceInterface        $moduleResource,
-        DeploymentConfig         $deploymentConfig,
-        SqlVersionProvider       $sqlVersionProvider,
-        ScopeConfigInterface     $scopeConfig,
-        UrlInterface             $urlBuilder,
-        string                   $cartId,
-        string                   $storeId,
-        ProductService           $productService,
-        OrderFactory             $orderFactory
-    )
-    {
+        ResourceInterface $moduleResource,
+        DeploymentConfig $deploymentConfig,
+        SqlVersionProvider $sqlVersionProvider,
+        ScopeConfigInterface $scopeConfig,
+        UrlInterface $urlBuilder,
+        string $cartId,
+        string $storeId,
+        ProductService $productService,
+        OrderFactory $orderFactory
+    ) {
         $this->quoteRepository = $quoteRepository;
         $this->productMetadata = $productMetadata;
         $this->moduleResource = $moduleResource;
@@ -108,83 +117,147 @@ class CreateOrderRequestBuilder implements \SeQura\Core\BusinessLogic\Domain\Ord
         $this->orderFactory = $orderFactory;
     }
 
+    /**
+     * Builds the CreateOrderRequest object
+     *
+     * @return CreateOrderRequest The order request object
+     * @throws NoSuchEntityException If the quote cannot be found
+     */
     public function build(): CreateOrderRequest
     {
-        $this->quote = $this->quoteRepository->getActive($this->cartId);
+        try {
+            // TODO: Property $quote (Magento\Quote\Model\Quote) does not accept Magento\Quote\Api\Data\CartInterface.
+            // @phpstan-ignore-next-line
+            $this->quote = $this->quoteRepository->getActive((int) $this->cartId);
+        } catch (NoSuchEntityException $e) {
+            // TODO: Property $quote (Magento\Quote\Model\Quote) does not accept Magento\Quote\Api\Data\CartInterface.
+            // @phpstan-ignore-next-line
+            $this->quote = $this->quoteRepository->get((int) $this->cartId);
+        }
 
         return $this->generateCreateOrderRequest();
     }
 
+    /**
+     * Returns true if SeQura payment methods are available for current checkout. Otherwise it returns false.
+     *
+     * @param GeneralSettingsResponse $generalSettingsResponse
+     *
+     * @return bool
+     */
     public function isAllowedFor(GeneralSettingsResponse $generalSettingsResponse): bool
     {
-        $generalSettings = $generalSettingsResponse->toArray();
-        $stateService = ServiceRegister::getService(UIStateService::class);
-        $isOnboarding = StoreContext::doWithStore($this->storeId, [$stateService, 'isOnboardingState']);
+        try {
+            $generalSettings = $generalSettingsResponse->toArray();
+            // TODO: Property $quote (Magento\Quote\Model\Quote) does not accept Magento\Quote\Api\Data\CartInterface.
+            // @phpstan-ignore-next-line
+            $this->quote = $this->quoteRepository->getActive((int) $this->cartId);
+            $merchantId = $this->getMerchantId();
 
-        if ($isOnboarding) {
-            return false;
-        }
+            if (!$merchantId) {
+                return false;
+            }
 
-        if (
-            !empty($generalSettings['allowedIPAddresses']) &&
-            !empty($ipAddress = $this->getCustomerIpAddress()) &&
-            !in_array($ipAddress, $generalSettings['allowedIPAddresses'], true)
-        ) {
-            return false;
-        }
+            if (!empty($generalSettings['allowedIPAddresses']) &&
+                !empty($ipAddress = $this->getCustomerIpAddress()) &&
+                is_array($generalSettings['allowedIPAddresses']) &&
+                !in_array($ipAddress, $generalSettings['allowedIPAddresses'], true)
+            ) {
+                return false;
+            }
 
-        if (
-            empty($generalSettings['excludedProducts']) &&
-            empty($generalSettings['excludedCategories'])
-        ) {
+            if (empty($generalSettings['excludedProducts']) &&
+                empty($generalSettings['excludedCategories'])
+            ) {
+                return true;
+            }
+
+            // TODO: Property $quote (Magento\Quote\Model\Quote) does not accept Magento\Quote\Api\Data\CartInterface.
+            // @phpstan-ignore-next-line
+            $this->quote = $this->quoteRepository->getActive((int) $this->cartId);
+            // TODO: Call to an undefined method Magento\Quote\Api\Data\CartInterface::getAllVisibleItems().
+            // @phpstan-ignore-next-line
+            foreach ($this->quote->getAllVisibleItems() as $item) {
+                if (!empty($generalSettings['excludedProducts']) &&
+                    !empty($item->getSku()) &&
+                    (in_array($item->getProduct()->getData('sku'), $generalSettings['excludedProducts'], true) ||
+                        in_array($item->getProduct()->getSku(), $generalSettings['excludedProducts'], true))
+                ) {
+                    return false;
+                }
+
+                if ($item->getIsVirtual()) {
+                    return false;
+                }
+
+                if (!empty($generalSettings['excludedCategories']) &&
+                    !empty(array_intersect(
+                        $generalSettings['excludedCategories'],
+                        $this->productService->getAllProductCategoryIds($item->getProduct()->getCategoryIds())
+                    ))
+                ) {
+                    return false;
+                }
+            }
+
             return true;
+        } catch (Throwable $exception) {
+            Logger::logWarning('Unexpected error occurred while checking if SeQura payment methods are available.
+             Reason: ' . $exception->getMessage() . ' . Stack trace: ' . $exception->getTraceAsString());
+
+            return false;
         }
-
-        $this->quote = $this->quoteRepository->getActive($this->cartId);
-        foreach ($this->quote->getAllVisibleItems() as $item) {
-            if (
-                !empty($generalSettings['excludedProducts']) &&
-                !empty($item->getSku()) &&
-                (in_array($item->getProduct()->getData('sku'), $generalSettings['excludedProducts'], true) ||
-                    in_array($item->getProduct()->getSku(), $generalSettings['excludedProducts'], true))
-            ) {
-                return false;
-            }
-
-            if ($item->getIsVirtual()) {
-                return false;
-            }
-
-            if (
-                !empty($generalSettings['excludedCategories']) &&
-                !empty(array_intersect($generalSettings['excludedCategories'],
-                    $this->productService->getAllProductCategories($item->getProduct()->getCategoryIds())))
-            ) {
-                return false;
-            }
-        }
-
-        return true;
     }
 
+    /**
+     * Generates the CreateOrderRequest object with all necessary data
+     *
+     * @return CreateOrderRequest Fully populated order request
+     */
     private function generateCreateOrderRequest(): CreateOrderRequest
     {
+        //@var string
+        $shippingMethod = $this->quote->getShippingAddress()->getShippingMethod();
         return CreateOrderRequest::fromArray([
             'state' => '',
             'merchant' => $this->getMerchantData(),
-//            'merchant_reference' => [
-//                'order_ref_1' => $request->getOrder()->getId(),
-//            ],
             'cart' => $this->getCart(),
             'delivery_method' => [
-                'name' => $this->quote->getShippingAddress()->getShippingMethod(),
+                'name' => $shippingMethod,
+                'home_delivery' => !in_array(
+                    $shippingMethod,
+                    [
+                        //Magento MSI In-Store Pickup (BOPIS)
+                        'msi_instore_pickup',
+                        'instore_pickup',
+                        //Amasty Store Pickup
+                        'amstorepickup_amstorepickup',
+                        'amstorepickup_storepickup',
+                        //Mageplaza Store Pickup
+                        'mageplaza_storepickup',
+                        //Mirasvit Store Pickup
+                        'mirasvit_pickup',
+                        'mirasvit_storepickup',
+                        //MageWorx Store Pickup
+                        'mageworx_storepickup',
+                        'mageworx_instore_pickup',
+                        //Webkul Store Pickup
+                        'webkul_storepickup',
+                        //Other/Generic or Custom Store Pickup
+                        'storepickup_storepickup',
+                        'pickup_storepickup',
+                        'clickandcollect_clickandcollect',
+                        'instorepickup_instorepickup',
+                        'pickup_pickup',
+                        'clickandcollect',
+                        'pick_instore',
+                        'pickup',
+                    ]
+                ),
             ],
             'delivery_address' => $this->getAddress($this->quote->getShippingAddress()),
             'invoice_address' => $this->getAddress($this->quote->getBillingAddress()),
             'customer' => $this->getCustomer(),
-//            'instore' => [
-//                'code' => $request->getOrder()->getId(),
-//            ],
             'gui' => [
                 'layout' => 'desktop',
             ],
@@ -192,6 +265,11 @@ class CreateOrderRequestBuilder implements \SeQura\Core\BusinessLogic\Domain\Ord
         ]);
     }
 
+    /**
+     * Gets merchant data for the order request
+     *
+     * @return array<string, mixed> Merchant information including URLs and identification
+     */
     private function getMerchantData(): array
     {
         $signature = $this->getSignature();
@@ -199,6 +277,8 @@ class CreateOrderRequestBuilder implements \SeQura\Core\BusinessLogic\Domain\Ord
 
         // Only for development environment. Replace local shop domain with ngrok.
         if (defined('SEQURA_NGROK_URL') && !empty(SEQURA_NGROK_URL)) {
+            // TODO: The use of function parse_url() is discouraged
+            // phpcs:ignore Magento2.Functions.DiscouragedFunction.Discouraged
             $localShopDomain = parse_url($webhookUrl, PHP_URL_HOST);
             $webhookUrl = str_replace(
                 ['http://', 'https://', $localShopDomain],
@@ -208,7 +288,7 @@ class CreateOrderRequestBuilder implements \SeQura\Core\BusinessLogic\Domain\Ord
         }
 
         return [
-            'id' => $this->getMerchantId(),
+            'id' => (string)$this->getMerchantId(),
             'notify_url' => $webhookUrl,
             'return_url' => $this->urlBuilder->getUrl('sequra/comeback', ['cartId' => $this->cartId]),
             'notification_parameters' => [
@@ -227,6 +307,11 @@ class CreateOrderRequestBuilder implements \SeQura\Core\BusinessLogic\Domain\Ord
         ];
     }
 
+    /**
+     * Gets cart data for the order request
+     *
+     * @return array<string, mixed> Cart information including totals, currency and items
+     */
     private function getCart(): array
     {
         return [
@@ -240,6 +325,11 @@ class CreateOrderRequestBuilder implements \SeQura\Core\BusinessLogic\Domain\Ord
         ];
     }
 
+    /**
+     * Gets all order items including products, shipping and discounts
+     *
+     * @return array<int, mixed> Array of order items
+     */
     private function getOrderItems(): array
     {
         $items = [];
@@ -282,6 +372,11 @@ class CreateOrderRequestBuilder implements \SeQura\Core\BusinessLogic\Domain\Ord
         return $items;
     }
 
+    /**
+     * Calculates the total discount amount for the order
+     *
+     * @return int Total discount amount in cents (negative value)
+     */
     private function getTotalDiscountAmount(): int
     {
         $totalDiscount = 0;
@@ -313,6 +408,13 @@ class CreateOrderRequestBuilder implements \SeQura\Core\BusinessLogic\Domain\Ord
         return -1 * $totalDiscount;
     }
 
+    /**
+     * Formats an address into the required format for Sequra
+     *
+     * @param Address $address The Magento address object
+     *
+     * @return array<string, mixed> Formatted address data
+     */
     private function getAddress(Address $address): array
     {
         return [
@@ -329,6 +431,11 @@ class CreateOrderRequestBuilder implements \SeQura\Core\BusinessLogic\Domain\Ord
         ];
     }
 
+    /**
+     * Gets customer information for the order request
+     *
+     * @return array<string, mixed> Customer details including personal information and order history
+     */
     private function getCustomer(): array
     {
         $email = $this->quote->getCustomer()->getEmail();
@@ -346,6 +453,8 @@ class CreateOrderRequestBuilder implements \SeQura\Core\BusinessLogic\Domain\Ord
             'logged_in' => !$this->quote->getCustomerIsGuest(),
             'language_code' => $this->quote->getStore()->getConfig('general/locale/code'),
             'ip_number' => $this->getCustomerIpAddress(),
+            // TODO: Direct use of $_SERVER Superglobal detected.
+            // phpcs:ignore Magento2.Security.Superglobal.SuperglobalUsageWarning
             'user_agent' => $_SERVER["HTTP_USER_AGENT"],
             'date_of_birth' => $this->quote->getCustomer()->getDob(),
             'company' => $this->quote->getBillingAddress()->getCompany(),
@@ -357,9 +466,11 @@ class CreateOrderRequestBuilder implements \SeQura\Core\BusinessLogic\Domain\Ord
     }
 
     /**
-     * @param $customerId
+     * Get previous orders for a customer
      *
-     * @return array
+     * @param int $customerId
+     *
+     * @return array<array<string, mixed>> Array of previous orders
      */
     private function getPreviousOrders($customerId): array
     {
@@ -371,17 +482,24 @@ class CreateOrderRequestBuilder implements \SeQura\Core\BusinessLogic\Domain\Ord
             return $orders;
         }
 
+        /**
+         * @var Order $orderRow
+         */
         foreach ($orderCollection as $orderRow) {
             $order = [];
-            $order['amount'] = $this->formatPrice($orderRow->getData('grand_total'));
+            $order['amount'] = $this->formatPrice(is_numeric($orderRow->getData('grand_total'))
+                ? (float) $orderRow->getData('grand_total') : 0);
             $order['currency'] = $orderRow->getData('order_currency_code');
-            $order['created_at'] = str_replace(' ', 'T', $orderRow->getData('created_at'));
+            $createdAt = $orderRow->getData('created_at');
+            $order['created_at'] = str_replace(' ', 'T', is_string($createdAt) ? $createdAt : '');
             $order['raw_status'] = $orderRow->getData('status');
-            $order['postal_code'] = $orderRow->getBillingAddress()->getPostCode();
-            $order['country_code'] = $orderRow->getBillingAddress()->getCountryId();
-            $order['status'] = $this->mapOrderStatus($orderRow->getData('status'));
-            $order['payment_method_raw'] = $orderRow->getPayment()->getAdditionalInformation()['method_title'] ?? '';
-            $order['payment_method'] = $this->mapPaymentName($orderRow->getPayment()->getMethod());
+            $billingAddress = $orderRow->getBillingAddress();
+            $order['postal_code'] = $billingAddress ? $billingAddress->getPostCode() : '';
+            $order['country_code'] = $billingAddress ? $billingAddress->getCountryId() : '';
+            $order['status'] = $this->mapOrderStatus(is_string($order['raw_status']) ? $order['raw_status'] : '');
+            $payment = $orderRow->getPayment();
+            $order['payment_method_raw'] = $payment ? $payment->getAdditionalInformation()['method_title'] : '';
+            $order['payment_method'] = $payment ? $this->mapPaymentName($payment->getMethod()) : '';
 
             $orders[] = $order;
         }
@@ -390,6 +508,8 @@ class CreateOrderRequestBuilder implements \SeQura\Core\BusinessLogic\Domain\Ord
     }
 
     /**
+     * Maps the payment method name to a Sequra-compatible format
+     *
      * @param string $name
      *
      * @return string
@@ -420,6 +540,8 @@ class CreateOrderRequestBuilder implements \SeQura\Core\BusinessLogic\Domain\Ord
     }
 
     /**
+     * Maps the order status to a Sequra-compatible format
+     *
      * @param string $magentoStatus
      *
      * @return string
@@ -437,7 +559,9 @@ class CreateOrderRequestBuilder implements \SeQura\Core\BusinessLogic\Domain\Ord
     }
 
     /**
-     * @param $price
+     * Formats the price to an integer value in cents
+     *
+     * @param float $price
      *
      * @return int
      */
@@ -447,35 +571,45 @@ class CreateOrderRequestBuilder implements \SeQura\Core\BusinessLogic\Domain\Ord
             return 0;
         }
 
-        return intval(round(100 * $price));
+        return (int) round(100 * $price);
     }
 
+    /**
+     * Gets platform information for the order request
+     *
+     * @return array<string, string> Platform details including version information
+     */
     private function getPlatform(): array
     {
         $connectionData = $this->deploymentConfig->get(
-            ConfigOptionsListConstants::CONFIG_PATH_DB_CONNECTION_DEFAULT, []
+            ConfigOptionsListConstants::CONFIG_PATH_DB_CONNECTION_DEFAULT,
+            []
         );
 
         return [
             'name' => 'magento2',
-            'version' => $this->productMetadata->getVersion(),
-            'plugin_version' => $this->moduleResource->getDbVersion('Sequra_Core'),
+            'version' => (string) $this->productMetadata->getVersion(),
+            'plugin_version' => (string) $this->moduleResource->getDbVersion('Sequra_Core'),
             'uname' => php_uname(),
-            'db_name' => !empty($connectionData['model']) ? $connectionData['model'] : 'mysql',
-            'db_version' => $this->sqlVersionProvider->getSqlVersion(),
-            'php_version' => phpversion(),
+            'db_name' => is_array($connectionData) && !empty($connectionData['model'])
+            && is_string($connectionData['model']) ? $connectionData['model'] : 'mysql',
+            'db_version' => (string) $this->sqlVersionProvider->getSqlVersion(),
+            'php_version' => (string) phpversion(),
         ];
     }
 
     /**
-     * @return string
+     * Get merchant ID based on the shipping country
+     *
+     * @return string|null
      */
-    private function getMerchantId(): string
+    private function getMerchantId(): ?string
     {
         $shippingCountry = $this->quote->getShippingAddress()->getCountryId();
+        // @phpstan-ignore-next-line
         $data = AdminAPI::get()->countryConfiguration($this->storeId)->getCountryConfigurations();
         if (!$data->isSuccessful()) {
-            throw new \RuntimeException('Unable to find merchant configuration for selling country ' . $shippingCountry);
+            return null;
         }
 
         $merchantId = null;
@@ -485,15 +619,18 @@ class CreateOrderRequestBuilder implements \SeQura\Core\BusinessLogic\Domain\Ord
             }
         }
 
-        if (!$merchantId) {
-            throw new \RuntimeException('Unable to find merchant configuration for selling country ' . $shippingCountry);
-        }
-
-        return (string)$merchantId;
+        return $merchantId;
     }
 
+    /**
+     * Gets the signature for secure communication with Sequra
+     *
+     * @return string HMAC signature
+     * @throws \RuntimeException If merchant configuration cannot be found
+     */
     private function getSignature(): string
     {
+        // @phpstan-ignore-next-line
         $data = AdminAPI::get()->connection($this->storeId)->getConnectionSettings();
         if (!$data->isSuccessful()) {
             throw new \RuntimeException('Unable to find merchant configuration');
@@ -507,8 +644,15 @@ class CreateOrderRequestBuilder implements \SeQura\Core\BusinessLogic\Domain\Ord
         );
     }
 
+    /**
+     * Gets the customer's IP address from server variables
+     *
+     * @return string IP address
+     */
     private function getCustomerIpAddress(): string
     {
+        // TODO: Direct use of $_SERVER Superglobal detected
+        // phpcs:disable Magento2.Security.Superglobal.SuperglobalUsageWarning
         if (!empty($_SERVER['HTTP_CLIENT_IP'])) {
             return $_SERVER['HTTP_CLIENT_IP'];
         }
@@ -518,5 +662,6 @@ class CreateOrderRequestBuilder implements \SeQura\Core\BusinessLogic\Domain\Ord
         }
 
         return $_SERVER['REMOTE_ADDR'];
+        // phpcs:enable Magento2.Security.Superglobal.SuperglobalUsageWarning
     }
 }

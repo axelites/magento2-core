@@ -8,13 +8,22 @@ use Magento\Backend\Block\Template\Context;
 use SeQura\Core\Infrastructure\ServiceRegister;
 use Sequra\Core\Services\BusinessLogic\PaymentMethodsService;
 
-/**
- * Class PaymentMethods
- *
- * @package Sequra\Core\Block\Adminhtml\Form\Element
- */
 class PaymentMethods extends Template
 {
+
+    // phpcs:disable Generic.CodeAnalysis.UselessOverridingMethod.Found
+    /**
+     * PaymentMethods constructor.
+     *
+     * @param Context $context
+     * @param mixed[] $data
+     */
+    public function __construct(Context $context, array $data = [])
+    {
+        parent::__construct($context, $data);
+    }
+    // phpcs:enable
+
     /**
      *
      * @var string
@@ -22,23 +31,9 @@ class PaymentMethods extends Template
     protected $_template = 'Sequra_Core::form/element/methods.phtml';
 
     /**
-     * PaymentMethods constructor.
-     *
-     * @param Context $context
-     * @param array $data
-     */
-    public function __construct(
-        Context $context,
-        array   $data = []
-    )
-    {
-        parent::__construct($context, $data);
-    }
-
-    /**
      * Retrieves all payment methods configured for all connected stores.
      *
-     * @return array
+     * @return array<string, mixed>
      *
      * @throws Exception
      */
@@ -48,6 +43,8 @@ class PaymentMethods extends Template
     }
 
     /**
+     * Get the payment method service.
+     *
      * @return PaymentMethodsService
      */
     private function getPaymentMethodsService(): PaymentMethodsService

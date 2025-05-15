@@ -9,33 +9,34 @@ use SeQura\Core\Infrastructure\ORM\Interfaces\RepositoryInterface;
 use SeQura\Core\Infrastructure\ORM\QueryFilter\QueryFilter;
 use Sequra\Core\ResourceModel\SequraEntity;
 
-/**
- * Class BaseRepository
- *
- * @package Sequra\Core\Repository
- */
+// TODO: Remove static methods
+// phpcs:disable Magento2.Functions.StaticFunction.StaticFunction
 class BaseRepository implements RepositoryInterface
 {
     /**
      * Fully qualified name of this class.
      */
-    const THIS_CLASS_NAME = __CLASS__;
+    public const THIS_CLASS_NAME = __CLASS__;
+    
     /**
      * Number of indexes in Sequra entity table.
      */
-    const NUMBER_OF_INDEXES = 7;
+    public const NUMBER_OF_INDEXES = 7;
+    
     /**
      * @var string
      */
     protected $entityClass;
+    
     /**
      * @var SequraEntity
      */
     protected $resourceEntity;
+    
     /**
      * Name of the base entity table in database.
      */
-    const TABLE_NAME = 'sequra_entity';
+    public const TABLE_NAME = 'sequra_entity';
 
     /**
      * Returns full class name.
@@ -52,7 +53,11 @@ class BaseRepository implements RepositoryInterface
      */
     public function __construct()
     {
-        $this->resourceEntity = ObjectManager::getInstance()->create($this->getResourceEntity());
+        /**
+         * @var SequraEntity $resourceEntity
+         */
+        $resourceEntity = ObjectManager::getInstance()->create($this->getResourceEntity());
+        $this->resourceEntity = $resourceEntity;
         $this->resourceEntity->setTableName(static::TABLE_NAME);
     }
 
@@ -61,7 +66,7 @@ class BaseRepository implements RepositoryInterface
      *
      * @param string $entityClass Repository entity class.
      */
-    public function setEntityClass($entityClass)
+    public function setEntityClass($entityClass): void
     {
         $this->entityClass = $entityClass;
     }
@@ -69,7 +74,7 @@ class BaseRepository implements RepositoryInterface
     /**
      * Selects all Sequra entities in the system.
      *
-     * @return array All entities as arrays.
+     * @return Entity[] All entities as arrays.
      *
      * @throws \Magento\Framework\Exception\LocalizedException
      */
@@ -92,7 +97,6 @@ class BaseRepository implements RepositoryInterface
     {
         /** @var Entity $entity */
         $entity = new $this->entityClass;
-
         $records = $this->resourceEntity->selectEntities($filter, $entity);
 
         return $this->deserializeEntities($records);
@@ -195,6 +199,7 @@ class BaseRepository implements RepositoryInterface
      * Translates database records to Sequra entities.
      *
      * @param array $records Array of database records.
+     * @phpstan-param array<int, array{data: string, id: int}> $records
      *
      * @return Entity[]
      */
@@ -218,13 +223,13 @@ class BaseRepository implements RepositoryInterface
      *
      * @param string $data Serialized entity as string.
      *
-     * @return Entity Created entity object.
+     * @return Entity|null Created entity object.
      */
     protected function deserializeEntity($data)
     {
         $jsonEntity = json_decode($data, true);
 
-        if (empty($jsonEntity)) {
+        if (empty($jsonEntity) || !is_array($jsonEntity)) {
             return null;
         }
 
